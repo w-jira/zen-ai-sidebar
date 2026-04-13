@@ -11,29 +11,87 @@
 </head>
 <body>
   <div id="page">
+
+    <!-- ─── Header ─────────────────────────────────────── -->
     <header>
       <div id="header-inner">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M9 12h6M12 9v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.3"/>
-        </svg>
-        <h1>Zen AI Sidebar</h1>
+        <div id="header-logo">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M9 12h6M12 9v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.3"/>
+          </svg>
+        </div>
+        <div id="header-text">
+          <h1>Zen AI Sidebar</h1>
+          <p id="header-subtitle">Your private AI assistant. Bring your own API key.</p>
+        </div>
       </div>
     </header>
 
-    <main>
-      <form id="settings-form" novalidate>
+    <!-- ─── Tab Nav ────────────────────────────────────── -->
+    <nav id="tab-nav" role="tablist">
+      <button class="tab-btn active" data-tab="connection" role="tab" aria-selected="true">Connection</button>
+      <button class="tab-btn" data-tab="models" role="tab" aria-selected="false">Models</button>
+      <button class="tab-btn" data-tab="behaviour" role="tab" aria-selected="false">Behaviour</button>
+      <button class="tab-btn" data-tab="appearance" role="tab" aria-selected="false">Appearance</button>
+    </nav>
 
-        <!-- API Connection -->
-        <section class="card">
-          <h2>API Connection</h2>
-          <p class="section-desc">Point this to your VPS running any OpenAI-compatible API (LiteLLM, Ollama, vLLM, custom proxy, etc.)</p>
+    <!-- ─── Form wrapper (settings.js submit handler) ──── -->
+    <form id="settings-form" novalidate>
 
+      <!-- ══════════ TAB 1: CONNECTION ══════════ -->
+      <div id="tab-connection" class="tab-panel" role="tabpanel">
+
+        <!-- Onboarding card (hidden when setup-done) -->
+        <div id="onboarding-card" class="onboarding-card">
+          <div class="onboarding-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Get started in 3 steps
+          </div>
+          <ol class="onboarding-steps">
+            <li><span class="step-num">1</span> Choose a backend below</li>
+            <li><span class="step-num">2</span> Paste your API key</li>
+            <li><span class="step-num">3</span> Click <strong>Test Connection</strong></li>
+          </ol>
+        </div>
+
+        <!-- Backend preset buttons -->
+        <div class="section-label">Backend</div>
+        <div id="preset-grid">
+          <button type="button" class="preset-card" data-endpoint="https://openrouter.ai/api/v1" data-preset="openrouter">
+            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            <span class="preset-name">OpenRouter</span>
+            <span class="preset-tag">100+ models, one key</span>
+          </button>
+          <button type="button" class="preset-card" data-endpoint="https://api.openai.com/v1" data-preset="openai">
+            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+            <span class="preset-name">OpenAI</span>
+            <span class="preset-tag">Official API</span>
+          </button>
+          <button type="button" class="preset-card" data-endpoint="http://localhost:11434/v1" data-preset="ollama">
+            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="preset-name">Ollama</span>
+            <span class="preset-tag">Local, free, private</span>
+          </button>
+          <button type="button" class="preset-card" data-endpoint="https://" data-preset="litellm">
+            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span class="preset-name">LiteLLM</span>
+            <span class="preset-tag">Self-hosted proxy</span>
+          </button>
+          <button type="button" class="preset-card" data-endpoint="" data-preset="custom">
+            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M16.24 7.76a6 6 0 0 1 0 8.49M4.93 4.93a10 10 0 0 0 0 14.14M7.76 7.76a6 6 0 0 0 0 8.49"/></svg>
+            <span class="preset-name">Custom</span>
+            <span class="preset-tag">Any OpenAI-compatible API</span>
+          </button>
+        </div>
+
+        <!-- Connection fields card -->
+        <div class="card">
           <div class="field">
             <label for="endpoint">API Base URL</label>
             <div class="input-hint">The base URL — <code>/chat/completions</code> is appended automatically</div>
-            <input type="url" id="endpoint" name="endpoint" placeholder="https://your-vps.com/v1" spellcheck="false" autocomplete="off" />
+            <input type="url" id="endpoint" name="endpoint" placeholder="https://your-api.com/v1" spellcheck="false" autocomplete="off" />
           </div>
 
           <div class="field">
@@ -50,8 +108,8 @@
           </div>
 
           <div class="field">
-            <label for="model">Model Name</label>
-            <div class="input-hint">Exact model string sent to your API (e.g. <code>claude-3-5-sonnet-20241022</code>, <code>gpt-4o</code>, <code>llama3</code>)</div>
+            <label for="model">Active Model</label>
+            <div class="input-hint">Exact model string sent to your API — or manage your model list in the <strong>Models</strong> tab</div>
             <input type="text" id="model" name="model" placeholder="gpt-4o" spellcheck="false" autocomplete="off" />
           </div>
 
@@ -59,15 +117,75 @@
             <button type="button" id="btn-test" class="btn-secondary">Test Connection</button>
             <span id="test-result"></span>
           </div>
-        </section>
+        </div>
 
-        <!-- Model Parameters -->
-        <section class="card">
-          <h2>Model Parameters</h2>
+      </div><!-- /tab-connection -->
+
+      <!-- ══════════ TAB 2: MODELS ══════════ -->
+      <div id="tab-models" class="tab-panel" style="display:none" role="tabpanel">
+
+        <div class="card">
+          <div class="card-header-row">
+            <h2>Your Models</h2>
+          </div>
+          <p class="section-desc">Manage your saved models. The active model is sent with every request. Click <em>Set default</em> to switch.</p>
+
+          <div id="model-list"></div>
+
+          <div id="model-empty" class="model-empty" style="display:none">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>No models yet — add one below</span>
+          </div>
+        </div>
+
+        <!-- Add model form -->
+        <div class="card">
+          <h2>Add Model</h2>
+          <div class="add-model-row">
+            <div class="field" style="flex:1; margin-bottom:0">
+              <label for="new-model-label">Display Name</label>
+              <input type="text" id="new-model-label" placeholder="GPT-4o" spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="field" style="flex:1.4; margin-bottom:0">
+              <label for="new-model-id">Model ID</label>
+              <input type="text" id="new-model-id" placeholder="gpt-4o" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono); font-size:12.5px" />
+            </div>
+            <button type="button" id="btn-add-model" class="btn-primary btn-add">Add</button>
+          </div>
+
+          <div class="quick-add-row">
+            <span class="quick-add-label">Quick add:</span>
+            <div class="chip-list">
+              <button type="button" class="chip" onclick="quickAdd('gpt-4o','GPT-4o')">gpt-4o</button>
+              <button type="button" class="chip" onclick="quickAdd('gpt-4o-mini','GPT-4o Mini')">gpt-4o-mini</button>
+              <button type="button" class="chip" onclick="quickAdd('claude-3-5-sonnet-20241022','Claude 3.5 Sonnet')">claude-3.5-sonnet</button>
+              <button type="button" class="chip" onclick="quickAdd('claude-3-haiku-20240307','Claude 3 Haiku')">claude-3-haiku</button>
+              <button type="button" class="chip" onclick="quickAdd('llama3','Llama 3')">llama3</button>
+              <button type="button" class="chip" onclick="quickAdd('mistral','Mistral')">mistral</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tab-models -->
+
+      <!-- ══════════ TAB 3: BEHAVIOUR ══════════ -->
+      <div id="tab-behaviour" class="tab-panel" style="display:none" role="tabpanel">
+
+        <div class="card">
+          <h2>System Prompt</h2>
+          <p class="section-desc">Customise how the assistant behaves. Page context is appended automatically when active.</p>
+          <div class="field">
+            <textarea id="systemPrompt" name="systemPrompt" rows="6" placeholder="You are a helpful AI assistant..."></textarea>
+          </div>
+          <button type="button" id="btn-reset-prompt" class="btn-ghost">Reset to default</button>
+        </div>
+
+        <div class="card">
+          <h2>Generation</h2>
 
           <div class="field">
             <label for="maxTokens">Max Output Tokens</label>
-            <div class="input-hint">Maximum tokens in each response</div>
+            <div class="input-hint">Maximum tokens in each response (128–32768)</div>
             <input type="number" id="maxTokens" name="maxTokens" min="128" max="32768" step="128" value="2048" />
           </div>
 
@@ -76,46 +194,239 @@
               Temperature
               <span id="temperature-val" class="badge">0.7</span>
             </label>
-            <div class="input-hint">0 = deterministic, 1 = creative</div>
+            <div class="input-hint">0 = deterministic &nbsp;·&nbsp; 1 = balanced &nbsp;·&nbsp; 2 = creative</div>
             <input type="range" id="temperature" name="temperature" min="0" max="2" step="0.05" value="0.7" />
+            <div class="range-labels"><span>0</span><span>1</span><span>2</span></div>
           </div>
-        </section>
+        </div>
 
-        <!-- System Prompt -->
-        <section class="card">
-          <h2>System Prompt</h2>
-          <p class="section-desc">Customise how the assistant behaves. Page context is appended automatically when active.</p>
-
-          <div class="field">
-            <textarea id="systemPrompt" name="systemPrompt" rows="6" placeholder="You are a helpful AI assistant..."></textarea>
+        <div class="card card-info">
+          <div class="info-row">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>Page content is capped at <strong>6,000 characters</strong> (~1,500 tokens) to keep prompts manageable.</p>
           </div>
+        </div>
 
-          <button type="button" id="btn-reset-prompt" class="btn-ghost">Reset to default</button>
-        </section>
+      </div><!-- /tab-behaviour -->
 
-        <!-- Appearance -->
-        <section class="card">
-          <h2>Appearance</h2>
-          <div class="field inline-field">
-            <label for="theme-select">Theme</label>
-            <select id="theme-select">
+      <!-- ══════════ TAB 4: APPEARANCE ══════════ -->
+      <div id="tab-appearance" class="tab-panel" style="display:none" role="tabpanel">
+
+        <div class="card">
+          <h2>Theme</h2>
+          <p class="section-desc">Sets the colour scheme for both the sidebar and this settings page.</p>
+
+          <div class="toggle-group-row">
+            <label class="toggle-group-label">Colour scheme</label>
+            <!-- Hidden select for settings.js compatibility -->
+            <select id="theme-select" style="display:none">
               <option value="dark">Dark</option>
               <option value="light">Light</option>
               <option value="system">System</option>
             </select>
+            <div class="toggle-group" id="theme-toggle-group">
+              <button type="button" class="toggle-btn" data-value="dark">Dark</button>
+              <button type="button" class="toggle-btn" data-value="light">Light</button>
+              <button type="button" class="toggle-btn" data-value="system">System</button>
+            </div>
           </div>
-        </section>
-
-        <!-- Save -->
-        <div id="form-footer">
-          <button type="submit" id="btn-save" class="btn-primary">Save Settings</button>
-          <span id="save-status"></span>
         </div>
 
-      </form>
-    </main>
-  </div>
+        <div class="card">
+          <h2>Font Size</h2>
+          <p class="section-desc">Adjusts the text size in the sidebar chat interface.</p>
+          <div class="toggle-group-row">
+            <label class="toggle-group-label">Size</label>
+            <div class="toggle-group" id="font-size-toggle-group">
+              <button type="button" class="toggle-btn" data-value="small">S</button>
+              <button type="button" class="toggle-btn active" data-value="medium">M</button>
+              <button type="button" class="toggle-btn" data-value="large">L</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tab-appearance -->
+
+      <!-- ─── Sticky footer ──────────────────────────────── -->
+      <div id="form-footer">
+        <button type="submit" id="btn-save" class="btn-primary">Save Settings</button>
+        <span id="save-status"></span>
+      </div>
+
+    </form>
+  </div><!-- /page -->
 
   <script src="settings.js"></script>
+
+  <script>
+  // ─── Tab switching ────────────────────────────────────────────────────────────
+  (function() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        tabBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+        tabPanels.forEach(p => { p.style.display = 'none'; });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected','true');
+        document.getElementById('tab-' + target).style.display = 'block';
+      });
+    });
+  })();
+
+  // ─── Backend presets ──────────────────────────────────────────────────────────
+  (function() {
+    const cards = document.querySelectorAll('.preset-card');
+    const endpointInput = document.getElementById('endpoint');
+
+    cards.forEach(card => {
+      card.addEventListener('click', () => {
+        cards.forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        const ep = card.dataset.endpoint;
+        endpointInput.value = ep;
+        if (ep === '') {
+          endpointInput.focus();
+        } else if (ep === 'https://') {
+          endpointInput.focus();
+          endpointInput.setSelectionRange(ep.length, ep.length);
+        }
+      });
+    });
+  })();
+
+  // ─── Theme toggle buttons (synced with hidden #theme-select for settings.js) ──
+  (function() {
+    const themeSelect = document.getElementById('theme-select');
+    const themeGroup = document.getElementById('theme-toggle-group');
+    const btns = themeGroup.querySelectorAll('.toggle-btn');
+
+    function syncTheme(value) {
+      btns.forEach(b => b.classList.toggle('active', b.dataset.value === value));
+      themeSelect.value = value;
+      themeSelect.dispatchEvent(new Event('change'));
+    }
+
+    btns.forEach(btn => {
+      btn.addEventListener('click', () => syncTheme(btn.dataset.value));
+    });
+
+    // Keep in sync when settings.js loads the stored theme
+    const observer = new MutationObserver(() => {
+      btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
+    });
+    observer.observe(themeSelect, { attributes: true, childList: true, subtree: true });
+
+    themeSelect.addEventListener('change', () => {
+      btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
+    });
+  })();
+
+  // ─── Font size toggles ────────────────────────────────────────────────────────
+  (function() {
+    const group = document.getElementById('font-size-toggle-group');
+    const btns = group.querySelectorAll('.toggle-btn');
+
+    async function loadFontSize() {
+      const s = await browser.storage.local.get('fontSize');
+      const size = s.fontSize || 'medium';
+      btns.forEach(b => b.classList.toggle('active', b.dataset.value === size));
+    }
+
+    btns.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        await browser.storage.local.set({ fontSize: btn.dataset.value });
+      });
+    });
+
+    loadFontSize();
+  })();
+
+  // ─── Model management ─────────────────────────────────────────────────────────
+  async function loadModels() {
+    const s = await browser.storage.local.get(['models', 'activeModel']);
+    const models = s.models || [];
+    const active = s.activeModel || '';
+    renderModelList(models, active);
+  }
+
+  function renderModelList(models, active) {
+    const list = document.getElementById('model-list');
+    const empty = document.getElementById('model-empty');
+    list.innerHTML = '';
+
+    if (models.length === 0) {
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+
+    models.forEach((m, i) => {
+      const row = document.createElement('div');
+      row.className = 'model-row' + (m.id === active ? ' active' : '');
+      row.innerHTML = `
+        <span class="model-active-dot" title="${m.id === active ? 'Active model' : 'Not active'}"></span>
+        <span class="model-label">${m.label}</span>
+        <span class="model-id">${m.id}</span>
+        <div class="model-actions">
+          ${m.id !== active
+            ? `<button class="btn-ghost btn-sm" onclick="setActive('${m.id.replace(/'/g,"\\'")}')" type="button">Set default</button>`
+            : '<span class="tag-active">Default</span>'
+          }
+          <button class="btn-icon btn-danger" onclick="deleteModel(${i})" title="Delete" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14H6L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+            </svg>
+          </button>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+  }
+
+  async function setActive(id) {
+    await browser.storage.local.set({ activeModel: id });
+    // Sync the model field in Connection tab
+    const modelInput = document.getElementById('model');
+    if (modelInput) modelInput.value = id;
+    loadModels();
+  }
+
+  async function deleteModel(i) {
+    const s = await browser.storage.local.get(['models', 'activeModel']);
+    const models = s.models || [];
+    models.splice(i, 1);
+    await browser.storage.local.set({ models });
+    loadModels();
+  }
+
+  async function addModel() {
+    const label = document.getElementById('new-model-label').value.trim();
+    const id = document.getElementById('new-model-id').value.trim();
+    if (!label || !id) return;
+    const s = await browser.storage.local.get('models');
+    const models = s.models || [];
+    models.push({ id, label });
+    await browser.storage.local.set({ models });
+    document.getElementById('new-model-label').value = '';
+    document.getElementById('new-model-id').value = '';
+    loadModels();
+  }
+
+  function quickAdd(id, label) {
+    document.getElementById('new-model-id').value = id;
+    document.getElementById('new-model-label').value = label;
+    document.getElementById('new-model-id').focus();
+  }
+
+  document.getElementById('btn-add-model').addEventListener('click', addModel);
+  loadModels();
+  </script>
 </body>
 </html>
