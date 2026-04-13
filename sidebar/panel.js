@@ -237,16 +237,37 @@ function triggerAutoSummary() {
 }
 
 /* ═══════════════════════════ MODEL SELECTION ═══════════════════════ */
+const MODEL_LIST = [
+  // Popular
+  {id:'gpt-4o',                           name:'GPT-4o',            group:'OpenAI'},
+  {id:'o3',                               name:'o3',                group:'OpenAI'},
+  {id:'o4-mini',                          name:'o4-mini',           group:'OpenAI'},
+  {id:'claude-sonnet-4-20250514',         name:'Claude Sonnet 4',   group:'Anthropic'},
+  {id:'claude-opus-4-20250514',           name:'Claude Opus 4',     group:'Anthropic'},
+  {id:'claude-3-7-sonnet-20250219',       name:'Claude 3.7 Sonnet', group:'Anthropic'},
+  {id:'gemini-2.5-pro',                   name:'Gemini 2.5 Pro',    group:'Google'},
+  {id:'gemini-2.5-flash',                name:'Gemini 2.5 Flash',  group:'Google'},
+  {id:'meta-llama/llama-4-maverick',      name:'Llama 4 Maverick',  group:'Meta'},
+  {id:'deepseek/deepseek-r1',             name:'DeepSeek R1',       group:'DeepSeek'},
+  // Extended
+  {id:'gpt-4o-mini',                      name:'GPT-4o mini',       group:'OpenAI'},
+  {id:'o4-mini-high',                     name:'o4-mini-high',      group:'OpenAI'},
+  {id:'gpt-4.5',                          name:'GPT-4.5',           group:'OpenAI'},
+  {id:'claude-3-5-sonnet-20241022',       name:'Claude 3.5 Sonnet', group:'Anthropic'},
+  {id:'claude-3-5-haiku-20241022',        name:'Claude 3.5 Haiku',  group:'Anthropic'},
+  {id:'gemini-2.0-flash',                name:'Gemini 2.0 Flash',  group:'Google'},
+  {id:'google/gemma-3-27b-it',            name:'Gemma 3 27B',       group:'Google'},
+  {id:'meta-llama/llama-4-scout',         name:'Llama 4 Scout',     group:'Meta'},
+  {id:'meta-llama/llama-3.3-70b-instruct',name:'Llama 3.3 70B',     group:'Meta'},
+  {id:'deepseek/deepseek-chat',           name:'DeepSeek Chat',     group:'DeepSeek'},
+  {id:'mistral-large-latest',             name:'Mistral Large',     group:'Mistral'},
+  {id:'mistral-small-latest',             name:'Mistral Small',     group:'Mistral'},
+  {id:'codestral-latest',                 name:'Codestral',         group:'Mistral'},
+];
+
 function modelLabel(id) {
-  const labels = {
-    'gpt-4o': 'GPT-4o',
-    'gpt-4o-mini': 'GPT-4o mini',
-    'o3-mini': 'o3-mini',
-    'claude-3-7-sonnet': 'Claude 3.7',
-    'claude-3-5-haiku': 'Claude Haiku',
-    'gemini-2-flash': 'Gemini Flash',
-  };
-  return labels[id] || id;
+  const m = MODEL_LIST.find(m => m.id === id);
+  return m ? m.name : id;
 }
 
 function setModel(id) {
@@ -625,7 +646,7 @@ async function callAI(history, streaming = false) {
 
 function getApiEndpoint() {
   // Default: OpenAI-compatible endpoint
-  const openaiModels = ['gpt-4o', 'gpt-4o-mini', 'o3-mini'];
+  const openaiModels = MODEL_LIST.filter(m => m.group === 'OpenAI').map(m => m.id);
   if (openaiModels.includes(state.model)) {
     return 'https://api.openai.com/v1/chat/completions';
   }
