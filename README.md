@@ -24,25 +24,31 @@ A privacy-first AI assistant sidebar for [Zen Browser](https://zen-browser.app) 
 
 ## Install
 
-### Zen Browser / Firefox (temporary — no AMO listing yet)
+### Option A — One-click (recommended)
 
-1. Download or clone this repo
-2. Open `about:debugging` in Zen/Firefox
-3. Click **This Firefox** → **Load Temporary Add-on**
-4. Select `manifest.json` from the repo folder
-5. Open the sidebar: **View → Sidebar → AI Assistant** (or the sidebar icon)
+1. **[Download zen-ai-sidebar.xpi](https://github.com/w-jira/zen-ai-sidebar/releases/latest)** from the latest release
+2. Drag the `.xpi` file onto any Zen or Firefox window
+3. Click **Add** when prompted
+4. Press `Ctrl+Shift+A` (`Cmd+Shift+A` on Mac) to open the sidebar
+
+> **Blocked?** Go to `about:config` → search `xpinstall.signatures.required` → set it to `false` → try again. Zen Browser typically has this off by default.
+
+### Option B — Load from source
+
+1. Clone or [download this repo](https://github.com/w-jira/zen-ai-sidebar/archive/refs/heads/main.zip) and unzip it
+2. Open `about:debugging` → **This Firefox** → **Load Temporary Add-on**
+3. Select `manifest.json` from the unzipped folder
 
 ### Configure your API
 
-Click the ⚙️ gear icon in the sidebar and enter:
+Click the **⚙️ gear icon** inside the sidebar and enter your endpoint and API key.
+Hit **Test Connection** to confirm it works.
 
-| Field | Description |
+| Field | Value |
 |---|---|
-| **Endpoint** | Base URL of your API (see backends below) |
+| **Endpoint** | Your API base URL (e.g. `https://api.openai.com/v1`) |
 | **API Key** | Your key for that service |
-| **Model** | Model ID string (e.g. `gpt-4o`, `llama3`) |
-
-Click **Test Connection** to verify everything works.
+| **Model** | Any model ID from the list in the sidebar |
 
 ---
 
