@@ -126,9 +126,13 @@ zen-ai-sidebar/
 
 ## Privacy
 
+Privacy is a right, not a feature. This extension was built on that belief.
+
+- **Zero telemetry.** There is no analytics, no tracking, no crash reporting, no pings home — ever. The code is open source; you can verify this yourself.
 - Your conversations go directly from your browser to your chosen API endpoint — nothing passes through any third-party server
-- Page content is extracted locally and only sent when you have context enabled
-- All settings (endpoint, API key) are stored in your browser's local storage only
+- Page content is extracted locally and only sent to your API when you have context enabled
+- All settings (endpoint, API key, chat history) are stored in your browser's local storage only — they never leave your machine
+- This is open source software made to make your browsing a little easier, nothing more
 
 ---
 
