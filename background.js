@@ -1,5 +1,10 @@
 // background.js — message router between content scripts and sidebar panel
 
+// Toolbar button toggles the sidebar
+browser.browserAction.onClicked.addListener(() => {
+  browser.sidebarAction.toggle();
+});
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Relay page content from content script to sidebar
   if (message.type === "PAGE_CONTENT") {
