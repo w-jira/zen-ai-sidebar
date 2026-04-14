@@ -26,7 +26,7 @@ A privacy-first AI assistant sidebar for [Zen Browser](https://zen-browser.app) 
 
 ### Option A — One-click (recommended)
 
-1. **[Download zen-ai-sidebar.xpi](https://github.com/w-jira/zen-ai-sidebar/releases/latest)** from the latest release
+1. **[Download zen-ai-sidebar.xpi](https://github.com/w-jira/zen-ai-sidebar/raw/main/zen-ai-sidebar.xpi)** — direct download
 2. Drag the `.xpi` file onto any Zen or Firefox window
 3. Click **Add** when prompted
 4. Press `Ctrl+Shift+A` (`Cmd+Shift+A` on Mac) to open the sidebar
