@@ -1,3 +1,5 @@
+"use strict";
+
 // content.js — extracts page text and selection, runs in every page
 
 // Respond to sidebar/background requests for page content
@@ -37,8 +39,8 @@ function extractPageContent() {
   const article = cloned.querySelector("article, [role='main'], main");
   const source = article || cloned;
 
-  // Collapse whitespace
-  const text = source.innerText
+  // Use textContent (not innerText) since the clone is not in the DOM
+  const text = source.textContent
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]+/g, " ")
     .trim();

@@ -410,9 +410,12 @@ function applyTheme() {
 }
 
 function toggleTheme() {
-  state.theme = state.theme === 'light' ? 'dark' : 'light';
+  const order = ['dark', 'light', 'system'];
+  const idx = order.indexOf(state.theme);
+  state.theme = order[(idx + 1) % order.length];
   applyTheme();
   saveStorage({ theme: state.theme });
+  showToast('Theme: ' + state.theme.charAt(0).toUpperCase() + state.theme.slice(1), 1200);
 }
 
 /* ═══════════════════════════ FONT SIZE ═════════════════════════════ */
@@ -481,7 +484,7 @@ function buildSystemPrompt() {
     ? state.systemPrompt + ' '
     : 'You are Zen AI, a helpful browser sidebar assistant. ';
   if (state.pageCtx.content) {
-    sys += `The user is viewing: "${state.pageCtx.title}" (${state.pageCtx.url})\n\nPage content:\n${state.pageCtx.content.slice(0, 8000)}\n\n`;
+    sys += `The user is viewing: "${state.pageCtx.title}" (${state.pageCtx.url})\n\nPage content:\n${state.pageCtx.content.slice(0, 6000)}\n\n`;
   }
   if (state.responseLength === 'detailed') {
     sys += 'Provide detailed, thorough responses.';
@@ -537,7 +540,7 @@ function renderMessage(role, content, streaming = false) {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       if (btn.dataset.action === 'copy') {
-        navigator.clipboard.writeText(content).then(() => showToast('Copied!', 1500));
+        navigator.clipboard.writeText(content).then(() => showToast('Copied!', 1500)).catch(() => showToast('Copy failed', 1500));
       } else if (btn.dataset.action === 'regen') {
         regenerateLastResponse();
       }
@@ -552,7 +555,7 @@ function renderMessage(role, content, streaming = false) {
     actionsEl.addEventListener('click', e => {
       const btn = e.target.closest('[data-action]');
       if (btn && btn.dataset.action === 'copy') {
-        navigator.clipboard.writeText(content).then(() => showToast('Copied!', 1500));
+        navigator.clipboard.writeText(content).then(() => showToast('Copied!', 1500)).catch(() => showToast('Copy failed', 1500));
       }
     });
   }
@@ -587,10 +590,14 @@ function renderMarkdown(text) {
   text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   text = text.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
   text = text.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+  // Blockquotes
+  text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
   // Bold & italic
   text = text.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
   text = text.replace(/\*\*([^*]+)\*\*/g,     '<strong>$1</strong>');
   text = text.replace(/\*([^*\n]+)\*/g,        '<em>$1</em>');
+  // Links — [text](url)
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   // Unordered lists
   text = text.replace(/^[-*] (.+)$/gm, '<li class="ul">$1</li>');
   // Ordered lists
@@ -621,8 +628,33 @@ function escapeHtml(text) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
+
+// Strip potential API key patterns from error messages before display
+function sanitizeErrorMsg(msg) {
+  if (!msg) return 'Unknown error';
+  return msg
+    .replace(/sk-[a-zA-Z0-9_-]{20,}/g, 'sk-***')
+    .replace(/sk-ant-[a-zA-Z0-9_-]{20,}/g, 'sk-ant-***')
+    .replace(/AIza[a-zA-Z0-9_-]{20,}/g, 'AIza***')
+    .replace(/key=[a-zA-Z0-9_-]{20,}/g, 'key=***');
+}
+
+// Map HTTP status codes to user-friendly messages
+function friendlyApiError(status, msg) {
+  switch (status) {
+    case 401: return 'Invalid API key. Check your key in Settings.';
+    case 402: return 'Billing issue with your API provider. Check your account.';
+    case 403: return 'Access denied. This model may not be available on your plan.';
+    case 429: return 'Rate limited. Wait a moment and try again.';
+    case 500: case 502: case 503: return 'Provider is temporarily unavailable. Try again shortly.';
+    default: return sanitizeErrorMsg(msg) || 'API error ' + status;
+  }
+}
+
+const REQUEST_TIMEOUT_MS = 45000;
 
 /* ═══════════════════════════ SEND MESSAGE ══════════════════════════ */
 async function sendMessage(content) {
@@ -681,8 +713,11 @@ async function sendMessage(content) {
     }
   } catch (err) {
     typingEl.remove();
-    if (err.name !== 'AbortError') {
-      showError(err.message || 'Request failed. Check your API key.');
+    if (err.name === 'AbortError') { /* user cancelled */ }
+    else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      showError('Network error. Check your internet connection and endpoint URL.');
+    } else {
+      showError(sanitizeErrorMsg(err.message) || 'Request failed. Check your API key in Settings.');
     }
   } finally {
     setGenerating(false);
@@ -713,18 +748,26 @@ async function streamResponse(history, typingEl) {
   bubbleEl.appendChild(cursor);
 
   state.abortController = new AbortController();
+  const timeoutId = setTimeout(() => state.abortController.abort(), REQUEST_TIMEOUT_MS);
   let fullText = '';
 
-  const resp = await fetch(getApiEndpoint(true), {
-    method: 'POST',
-    headers: getApiHeaders(),
-    body: JSON.stringify(buildApiBody(history, true)),
-    signal: state.abortController.signal,
-  });
+  let resp;
+  try {
+    resp = await fetch(getApiEndpoint(true), {
+      method: 'POST',
+      headers: getApiHeaders(),
+      body: JSON.stringify(buildApiBody(history, true)),
+      signal: state.abortController.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!resp.ok) {
-    const errData = await resp.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `API error ${resp.status}`);
+    const errText = await resp.text().catch(() => '');
+    let errMsg;
+    try { errMsg = JSON.parse(errText)?.error?.message; } catch (_) {}
+    throw new Error(friendlyApiError(resp.status, errMsg || errText.slice(0, 200)));
   }
 
   const reader = resp.body.getReader();
@@ -790,7 +833,7 @@ async function streamResponse(history, typingEl) {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       if (btn.dataset.action === 'copy') {
-        navigator.clipboard.writeText(fullText).then(() => showToast('Copied!', 1500));
+        navigator.clipboard.writeText(fullText).then(() => showToast('Copied!', 1500)).catch(() => showToast('Copy failed', 1500));
       } else if (btn.dataset.action === 'regen') {
         regenerateLastResponse();
       }
@@ -804,15 +847,23 @@ async function streamResponse(history, typingEl) {
 
 async function callAI(history, streaming = false) {
   state.abortController = new AbortController();
-  const resp = await fetch(getApiEndpoint(streaming), {
-    method: 'POST',
-    headers: getApiHeaders(),
-    body: JSON.stringify(buildApiBody(history, streaming)),
-    signal: state.abortController.signal,
-  });
+  const timeoutId = setTimeout(() => state.abortController.abort(), REQUEST_TIMEOUT_MS);
+  let resp;
+  try {
+    resp = await fetch(getApiEndpoint(streaming), {
+      method: 'POST',
+      headers: getApiHeaders(),
+      body: JSON.stringify(buildApiBody(history, streaming)),
+      signal: state.abortController.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!resp.ok) {
-    const errData = await resp.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || errData?.message || `API error ${resp.status}`);
+    const errText = await resp.text().catch(() => '');
+    let errMsg;
+    try { errMsg = JSON.parse(errText)?.error?.message; } catch (_) {}
+    throw new Error(friendlyApiError(resp.status, errMsg || errText.slice(0, 200)));
   }
   const data = await resp.json();
   const provider = providerOf(state.model);
@@ -1113,7 +1164,7 @@ function exportChat(entry) {
     lines.push('');
   });
   const md = lines.join('\n');
-  navigator.clipboard.writeText(md).then(() => showToast('Chat exported to clipboard', 2000));
+  navigator.clipboard.writeText(md).then(() => showToast('Chat exported to clipboard', 2000)).catch(() => showToast('Export failed', 2000));
 }
 
 function openHistoryPanel() {

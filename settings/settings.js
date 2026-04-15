@@ -224,8 +224,8 @@ dom.settingsForm.addEventListener("submit", async (e) => {
       geminiKey:    dom.geminiKey.value.trim(),
       model:        dom.model.value.trim(),
       systemPrompt: dom.systemPrompt.value.trim(),
-      maxTokens:    parseInt(dom.maxTokens.value, 10),
-      temperature:  parseFloat(dom.temperature.value),
+      maxTokens:    parseInt(dom.maxTokens.value, 10) || 2048,
+      temperature:  isNaN(parseFloat(dom.temperature.value)) ? 0.7 : parseFloat(dom.temperature.value),
       theme:        dom.themeSelect.value,
     });
     showStatus(dom.saveStatus, "Saved", "ok");

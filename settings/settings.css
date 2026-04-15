@@ -699,7 +699,6 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
   color: var(--color-text-muted);
   cursor: pointer;
   transition: background var(--transition), border-color var(--transition), color var(--transition);
-  font-family: var(--font-mono);
 }
 
 .chip:hover {
