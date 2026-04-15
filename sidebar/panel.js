@@ -9,6 +9,7 @@
 const state = {
   model: 'gpt-4o',
   apiKey: '',
+  endpoint: '',           // custom endpoint, empty = auto-detect
   messages: [],           // { role:'user'|'assistant', content:string }
   generating: false,
   abortController: null,
@@ -87,10 +88,11 @@ const dom = {
   templatesList:     $('templates-list'),
   saveTemplateBtn:   $('save-template-btn'),
   templatesClose:    $('templates-close'),
-  setupOverlay:      $('setup-overlay'),
-  apiKeyInput:       $('api-key-input'),
-  setupModelSelect:  $('setup-model-select'),
-  setupSaveBtn:      $('setup-save-btn'),
+  setupOverlay:       $('setup-overlay'),
+  apiKeyInput:        $('api-key-input'),
+  setupEndpointInput: $('setup-endpoint-input'),
+  setupModelSelect:   $('setup-model-select'),
+  setupSaveBtn:       $('setup-save-btn'),
   toastContainer:    $('toast-container'),
 };
 
@@ -122,10 +124,11 @@ async function init() {
 async function loadStorage() {
   try {
     const data = await browser.storage.local.get([
-      'apiKey', 'model', 'theme', 'chatHistory', 'siteModels',
+      'apiKey', 'endpoint', 'model', 'theme', 'chatHistory', 'siteModels',
       'singleTurn', 'streamingEnabled', 'fontSize', 'responseLength', 'templates',
     ]);
     if (data.apiKey)          state.apiKey          = data.apiKey;
+    if (data.endpoint)        state.endpoint        = data.endpoint;
     if (data.model)           state.model           = data.model;
     if (data.theme)           state.theme           = data.theme;
     if (data.chatHistory)     state.chatHistory     = data.chatHistory;
@@ -450,28 +453,54 @@ function renderMessage(role, content, streaming = false) {
 }
 
 function renderMarkdown(text) {
-  // Simple markdown-like rendering
-  let html = escapeHtml(text);
-  // Code blocks
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
+  // Step 1: extract code blocks first so we don't mangle them
+  const codeBlocks = [];
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const escaped = escapeHtml(code.trim());
+    codeBlocks.push(`<pre><code class="language-${lang || 'text'}">${escaped}</code></pre>`);
+    return `\x00CODE${codeBlocks.length - 1}\x00`;
   });
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Bold
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  // Italic
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  // Line breaks to paragraphs
-  const paragraphs = html.split(/\n\n+/);
-  if (paragraphs.length > 1) {
-    html = paragraphs.map(p => {
-      p = p.trim();
-      if (p.startsWith('<pre>')) return p;
-      return `<p>${p.replace(/\n/g, '<br>')}</p>`;
-    }).join('');
-  }
-  return html;
+
+  // Step 2: extract inline code
+  const inlineCodes = [];
+  text = text.replace(/`([^`\n]+)`/g, (_, code) => {
+    inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+    return `\x00INLINE${inlineCodes.length - 1}\x00`;
+  });
+
+  // Step 3: escape remaining HTML
+  text = escapeHtml(text);
+
+  // Step 4: apply markdown to safe text
+  // Headings
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+  text = text.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+  // Bold & italic
+  text = text.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+  text = text.replace(/\*\*([^*]+)\*\*/g,     '<strong>$1</strong>');
+  text = text.replace(/\*([^*\n]+)\*/g,        '<em>$1</em>');
+  // Unordered lists
+  text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  // Ordered lists
+  text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Horizontal rule
+  text = text.replace(/^---+$/gm, '<hr>');
+  // Paragraphs — split on double newline
+  const parts = text.split(/\n{2,}/);
+  text = parts.map(p => {
+    p = p.trim();
+    if (!p) return '';
+    if (/^<(h[1-3]|ul|ol|li|hr|pre|blockquote)/.test(p)) return p;
+    return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+
+  // Step 5: restore code blocks
+  text = text.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[+i]);
+  text = text.replace(/\x00INLINE(\d+)\x00/g, (_, i) => inlineCodes[+i]);
+
+  return text;
 }
 
 function escapeHtml(text) {
@@ -511,7 +540,7 @@ async function sendMessage(content) {
 
   // Show typing indicator
   const typingEl = document.createElement('div');
-  typingEl.className = 'msg ai';
+  typingEl.className = 'msg assistant';
   typingEl.innerHTML = `<div class="msg-avatar">Z</div><div class="typing-dots"><span></span><span></span><span></span></div>`;
   dom.messages.appendChild(typingEl);
   scrollToBottom();
@@ -541,7 +570,7 @@ async function streamResponse(history, typingEl) {
   const { bubbleEl, msgEl } = (() => {
     typingEl.remove();
     const wrap = document.createElement('div');
-    wrap.className = 'msg ai';
+    wrap.className = 'msg assistant';
     const avatar = document.createElement('div');
     avatar.className = 'msg-avatar';
     avatar.textContent = 'Z';
@@ -586,19 +615,15 @@ async function streamResponse(history, typingEl) {
     const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
 
     for (const line of lines) {
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') continue;
-      try {
-        const json = JSON.parse(data);
-        const delta = json.choices?.[0]?.delta?.content || '';
-        if (delta) {
-          fullText += delta;
-          cursor.remove();
-          bubbleEl.innerHTML = renderMarkdown(fullText);
-          bubbleEl.appendChild(cursor);
-          scrollToBottom();
-        }
-      } catch (_) {}
+      const delta = parseDelta(line, providerOf(state.model));
+      if (delta === null) continue; // [DONE]
+      if (delta) {
+        fullText += delta;
+        cursor.remove();
+        bubbleEl.innerHTML = renderMarkdown(fullText);
+        bubbleEl.appendChild(cursor);
+        scrollToBottom();
+      }
     }
   }
 
@@ -647,34 +672,55 @@ async function callAI(history, streaming = false) {
   });
   if (!resp.ok) {
     const errData = await resp.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `API error ${resp.status}`);
+    throw new Error(errData?.error?.message || errData?.message || `API error ${resp.status}`);
   }
   const data = await resp.json();
+  const provider = providerOf(state.model);
+  if (provider === 'anthropic') {
+    // Anthropic: { content: [{type:'text', text:'...'}] }
+    return data.content?.[0]?.text || '';
+  }
+  if (provider === 'gemini') {
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
   return data.choices?.[0]?.message?.content || '';
 }
 
+/* ═══════════════════════════ API LAYER ════════════════════════════ */
+function providerOf(model) {
+  if (!model) return 'openai';
+  // If user has a custom endpoint set, always use OpenAI-compat format
+  if (state.endpoint) return 'openai-compat';
+  if (model.startsWith('claude'))    return 'anthropic';
+  if (model.startsWith('gemini'))    return 'gemini';
+  if (model.startsWith('grok'))      return 'openai-compat'; // xAI uses OpenAI-compat
+  return 'openai'; // OpenAI, Meta, DeepSeek, Mistral all via OpenAI-compat
+}
+
 function getApiEndpoint() {
-  // Default: OpenAI-compatible endpoint
-  const openaiModels = MODEL_LIST.filter(m => m.group === 'OpenAI').map(m => m.id);
-  if (openaiModels.includes(state.model)) {
-    return 'https://api.openai.com/v1/chat/completions';
+  // Custom endpoint always wins
+  if (state.endpoint) {
+    const base = state.endpoint.replace(/\/$/, '');
+    return base.endsWith('/chat/completions') ? base : `${base}/chat/completions`;
   }
-  if (state.model.startsWith('claude')) {
-    return 'https://api.anthropic.com/v1/messages';
-  }
-  if (state.model.startsWith('gemini')) {
-    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
-  }
+  const provider = providerOf(state.model);
+  if (provider === 'anthropic') return 'https://api.anthropic.com/v1/messages';
+  if (provider === 'gemini')    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:streamGenerateContent?key=${state.apiKey}`;
   return 'https://api.openai.com/v1/chat/completions';
 }
 
 function getApiHeaders() {
-  if (state.model.startsWith('claude')) {
+  const provider = providerOf(state.model);
+  if (provider === 'anthropic') {
     return {
       'Content-Type': 'application/json',
       'x-api-key': state.apiKey,
       'anthropic-version': '2023-06-01',
     };
+  }
+  if (provider === 'gemini') {
+    // API key is in URL for Gemini
+    return { 'Content-Type': 'application/json' };
   }
   return {
     'Content-Type': 'application/json',
@@ -682,24 +728,58 @@ function getApiHeaders() {
   };
 }
 
+const MAX_TOKENS_CONCISE  = 1024;
+const MAX_TOKENS_DETAILED = 4096;
+
 function buildApiBody(history, stream) {
-  if (state.model.startsWith('claude')) {
-    const sys = history.find(m => m.role === 'system');
+  const maxTok = state.responseLength === 'detailed' ? MAX_TOKENS_DETAILED : MAX_TOKENS_CONCISE;
+  const provider = providerOf(state.model);
+
+  if (provider === 'anthropic') {
+    const sys  = history.find(m => m.role === 'system');
     const msgs = history.filter(m => m.role !== 'system');
     return {
-      model: state.model === 'claude-3-7-sonnet' ? 'claude-3-7-sonnet-20250219' : 'claude-3-5-haiku-20241022',
-      system: sys ? sys.content : '',
+      model: state.model,   // use exact model ID as-is
+      system: sys ? sys.content : 'You are Zen AI, a helpful browser sidebar assistant.',
       messages: msgs,
       stream,
-      max_tokens: state.responseLength === 'detailed' ? 2048 : 512,
+      max_tokens: maxTok,
     };
   }
+
+  if (provider === 'gemini') {
+    // Gemini uses a different body format
+    const contents = history
+      .filter(m => m.role !== 'system')
+      .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+    const sys = history.find(m => m.role === 'system');
+    const body = { contents, generationConfig: { maxOutputTokens: maxTok } };
+    if (sys) body.systemInstruction = { parts: [{ text: sys.content }] };
+    return body;
+  }
+
+  // OpenAI-compatible (OpenAI, xAI, Meta via OpenRouter, DeepSeek, Mistral, custom VPS)
   return {
     model: state.model,
     messages: history,
     stream,
-    max_tokens: state.responseLength === 'detailed' ? 2048 : 512,
+    max_tokens: maxTok,
   };
+}
+
+// Parse SSE delta — handles OpenAI and Anthropic streaming formats
+function parseDelta(line, provider) {
+  const data = line.slice(6).trim();
+  if (data === '[DONE]') return null;
+  try {
+    const json = JSON.parse(data);
+    if (provider === 'anthropic') {
+      // Anthropic: {type:'content_block_delta', delta:{type:'text_delta', text:'...'}}
+      return json.delta?.text || json.delta?.content || '';
+    }
+    // OpenAI-compat
+    return json.choices?.[0]?.delta?.content || '';
+  } catch { return ''; }
 }
 
 async function regenerateLastResponse() {
@@ -1109,9 +1189,11 @@ dom.newChatBtn.addEventListener('click', () => {
   dom.contextBanner.style.display = 'none';
 });
 
-// Settings (placeholder — could expand)
+// Settings — open settings page in a new tab
 dom.settingsBtn.addEventListener('click', () => {
-  showToast('Settings coming soon', 1500);
+  browser.runtime.openOptionsPage().catch(() => {
+    browser.tabs.create({ url: browser.runtime.getURL('settings/settings.html') });
+  });
 });
 
 // Theme
@@ -1247,13 +1329,16 @@ document.addEventListener('keydown', e => {
 
 // Setup form
 dom.setupSaveBtn.addEventListener('click', async () => {
-  const key = dom.apiKeyInput.value.trim();
-  if (!key) { dom.apiKeyInput.focus(); return; }
-  state.apiKey = key;
-  state.model = dom.setupModelSelect.value;
+  const key      = dom.apiKeyInput.value.trim();
+  const endpoint = dom.setupEndpointInput ? dom.setupEndpointInput.value.trim() : '';
+  if (!key) { dom.apiKeyInput.focus(); showToast('Please enter an API key', 2000); return; }
+  state.apiKey   = key;
+  state.endpoint = endpoint;
+  state.model    = dom.setupModelSelect.value;
   dom.modelName.textContent = modelLabel(state.model);
-  await saveStorage({ apiKey: key, model: state.model });
+  await saveStorage({ apiKey: key, endpoint, model: state.model });
   dom.setupOverlay.style.display = 'none';
+  showToast('Connected — start chatting!', 2000);
 });
 
 /* ═══════════════════════════ BOOT ══════════════════════════════════ */
