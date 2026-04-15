@@ -51,19 +51,37 @@ const MODEL_LIST = [
 /* ═══════════════════════════ DOM REFS ═════════════════════════════ */
 const $ = (id) => document.getElementById(id);
 
+let connectionMode = "proxy";  // "proxy" | "direct" | "local"
+
 const dom = {
-  // Connection
-  endpoint:     $("endpoint"),
-  apiKey:       $("apiKey"),
-  model:        $("model"),
-  btnToggleKey: $("btn-toggle-key"),
-  btnTest:      $("btn-test"),
-  testResult:   $("test-result"),
-  onboarding:   $("onboarding-card"),
-  presetGrid:   $("preset-grid"),
-  // Provider keys
-  anthropicKey: $("anthropicKey"),
-  geminiKey:    $("geminiKey"),
+  // Mode toggle
+  modeToggle:     $("mode-toggle"),
+  modeProxy:      $("mode-proxy"),
+  modeDirect:     $("mode-direct"),
+  modeLocal:      $("mode-local"),
+  // Proxy fields
+  endpoint:       $("endpoint"),
+  apiKey:         $("apiKey"),
+  model:          $("model"),
+  btnToggleKey:   $("btn-toggle-key"),
+  btnTest:        $("btn-test"),
+  testResult:     $("test-result"),
+  presetGrid:     $("preset-grid"),
+  btnDetectModels: $("btn-detect-models"),
+  // Direct fields
+  openaiKey:      $("openaiKey"),
+  anthropicKey:   $("anthropicKey"),
+  geminiKey:      $("geminiKey"),
+  modelDirect:    $("model-direct"),
+  btnTestDirect:  $("btn-test-direct"),
+  testResultDirect: $("test-result-direct"),
+  // Local fields
+  localProviderToggle: $("local-provider-toggle"),
+  localEndpoint:  $("localEndpoint"),
+  modelLocal:     $("model-local"),
+  btnDetectLocal: $("btn-detect-local"),
+  btnTestLocal:   $("btn-test-local"),
+  testResultLocal: $("test-result-local"),
   // Behaviour
   profileSelect:  $("profile-select"),
   systemPrompt:   $("systemPrompt"),
@@ -77,7 +95,7 @@ const dom = {
   themeSelect:    $("theme-select"),
   themeGroup:     $("theme-toggle-group"),
   fontSizeGroup:  $("font-size-toggle-group"),
-  // Models
+  // Models tab
   modelList:      $("model-list"),
   modelEmpty:     $("model-empty"),
   newModelLabel:  $("new-model-label"),
@@ -106,6 +124,53 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     $("tab-" + target).style.display = "block";
   });
 });
+
+/* ═══════════════════════════ CONNECTION MODE ═══════════════════════ */
+function inferConnectionMode(stored) {
+  if (stored.connectionMode) return stored.connectionMode;
+  if (stored.endpoint && stored.endpoint.includes("localhost")) return "local";
+  if (stored.endpoint) return "proxy";
+  if (stored.anthropicKey || stored.geminiKey) return "direct";
+  if (stored.apiKey) return "direct";
+  return "proxy"; // default for new users
+}
+
+function syncModeToggle(mode) {
+  connectionMode = mode;
+  // Update toggle buttons
+  dom.modeToggle.querySelectorAll(".toggle-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.value === mode);
+  });
+  // Show/hide mode sections
+  dom.modeProxy.style.display  = mode === "proxy"  ? "block" : "none";
+  dom.modeDirect.style.display = mode === "direct" ? "block" : "none";
+  dom.modeLocal.style.display  = mode === "local"  ? "block" : "none";
+}
+
+// Mode toggle click handler
+dom.modeToggle.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".toggle-btn");
+  if (!btn) return;
+  const mode = btn.dataset.value;
+  syncModeToggle(mode);
+  await browser.storage.local.set({ connectionMode: mode });
+});
+
+// Local provider toggle (Ollama / LM Studio / Custom)
+if (dom.localProviderToggle) {
+  dom.localProviderToggle.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".toggle-btn");
+    if (!btn) return;
+    const provider = btn.dataset.value;
+    dom.localProviderToggle.querySelectorAll(".toggle-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.value === provider);
+    });
+    const urls = { ollama: "http://localhost:11434/v1", lmstudio: "http://localhost:1234/v1", custom: "" };
+    dom.localEndpoint.value = urls[provider] || "";
+    dom.localEndpoint.readOnly = provider !== "custom";
+    await browser.storage.local.set({ localProvider: provider, localEndpoint: dom.localEndpoint.value });
+  });
+}
 
 /* ═══════════════════════════ MODEL SELECT BUILDER ══════════════════ */
 function buildModelSelect(selectedId) {
@@ -139,11 +204,78 @@ function buildModelSelect(selectedId) {
   }
 }
 
+// Build a filtered model select for direct/local modes
+function buildFilteredModelSelect(selectEl, selectedId, mode) {
+  selectEl.textContent = "";
+  if (mode === "direct") {
+    // Only show models for providers with keys configured
+    const hasOpenAI = dom.openaiKey && dom.openaiKey.value.trim();
+    const hasAnthropic = dom.anthropicKey && dom.anthropicKey.value.trim();
+    const hasGemini = dom.geminiKey && dom.geminiKey.value.trim();
+    const filtered = MODEL_LIST.filter((m) => {
+      if (m.group === "OpenAI" && hasOpenAI) return true;
+      if (m.group === "Anthropic" && hasAnthropic) return true;
+      if (m.group === "Google" && hasGemini) return true;
+      return false;
+    });
+    if (filtered.length === 0) {
+      const opt = document.createElement("option");
+      opt.textContent = "Enter at least one API key above";
+      opt.disabled = true;
+      selectEl.appendChild(opt);
+      return;
+    }
+    let lastGroup = "";
+    let optgroup;
+    filtered.forEach((m) => {
+      if (m.group !== lastGroup) {
+        optgroup = document.createElement("optgroup");
+        optgroup.label = m.group;
+        selectEl.appendChild(optgroup);
+        lastGroup = m.group;
+      }
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = m.name;
+      if (m.id === selectedId) opt.selected = true;
+      optgroup.appendChild(opt);
+    });
+  } else if (mode === "local") {
+    // Local models are discovered, show placeholder
+    const opt = document.createElement("option");
+    opt.textContent = "Click 'Detect installed models' above";
+    opt.disabled = true;
+    selectEl.appendChild(opt);
+  }
+}
+
 // Auto-save model change to storage immediately (no Save button needed)
-dom.model.addEventListener("change", async () => {
-  const id = dom.model.value;
-  await browser.storage.local.set({ model: id });
-  showStatus(dom.saveStatus, "Model updated", "ok");
+function setupModelAutoSave(selectEl) {
+  selectEl.addEventListener("change", async () => {
+    await browser.storage.local.set({ model: selectEl.value });
+    showStatus(dom.saveStatus, "Model updated", "ok");
+  });
+}
+setupModelAutoSave(dom.model);
+if (dom.modelDirect) setupModelAutoSave(dom.modelDirect);
+if (dom.modelLocal) setupModelAutoSave(dom.modelLocal);
+
+// Auto-save direct mode keys on change
+["openaiKey", "anthropicKey", "geminiKey"].forEach((field) => {
+  const el = dom[field];
+  if (!el) return;
+  el.addEventListener("change", async () => {
+    const obj = {};
+    obj[field] = el.value.trim();
+    // In direct mode, also set apiKey to the OpenAI key for panel.js compatibility
+    if (field === "openaiKey") obj.apiKey = el.value.trim();
+    await browser.storage.local.set(obj);
+    // Rebuild direct model select when keys change
+    if (dom.modelDirect) {
+      const current = dom.modelDirect.value;
+      buildFilteredModelSelect(dom.modelDirect, current, "direct");
+    }
+  });
 });
 
 /* ═══════════════════════════ BACKEND PRESETS ═══════════════════════ */
@@ -165,25 +297,30 @@ dom.presetGrid.addEventListener("click", (e) => {
 /* ═══════════════════════════ LOAD / SAVE ══════════════════════════ */
 async function loadSettings() {
   const stored = await browser.storage.local.get([
-    "endpoint", "apiKey", "anthropicKey", "geminiKey",
+    "connectionMode", "endpoint", "apiKey", "openaiKey", "anthropicKey", "geminiKey",
+    "localEndpoint", "localProvider",
     "model", "systemPrompt", "maxTokens", "temperature",
     "theme", "fontSize", "profiles", "activeProfile",
   ]);
 
   dom.endpoint.value     = stored.endpoint     || "";
   dom.apiKey.value       = stored.apiKey       || "";
+  if (dom.openaiKey) dom.openaiKey.value = stored.openaiKey || stored.apiKey || "";
   dom.anthropicKey.value = stored.anthropicKey || "";
   dom.geminiKey.value    = stored.geminiKey    || "";
+  if (dom.localEndpoint) dom.localEndpoint.value = stored.localEndpoint || "http://localhost:11434/v1";
   buildModelSelect(stored.model || "gpt-4o");
+  // Also build direct/local model selects
+  if (dom.modelDirect) buildFilteredModelSelect(dom.modelDirect, stored.model || "gpt-4o", "direct");
+  if (dom.modelLocal) buildFilteredModelSelect(dom.modelLocal, stored.model || "", "local");
   dom.systemPrompt.value = stored.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   dom.maxTokens.value    = stored.maxTokens    || 2048;
   dom.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
   dom.temperatureVal.textContent = parseFloat(dom.temperature.value).toFixed(2);
 
-  // Hide onboarding if already configured
-  if (stored.apiKey || stored.anthropicKey || stored.geminiKey) {
-    dom.onboarding.style.display = "none";
-  }
+  // Connection mode
+  connectionMode = stored.connectionMode || inferConnectionMode(stored);
+  syncModeToggle(connectionMode);
 
   // Theme
   const theme = stored.theme || "dark";
@@ -217,12 +354,21 @@ function highlightPreset(endpoint) {
 dom.settingsForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
+    // Get active model from whichever mode's select is visible
+    const activeModel = connectionMode === "direct" && dom.modelDirect
+      ? dom.modelDirect.value
+      : connectionMode === "local" && dom.modelLocal
+        ? dom.modelLocal.value
+        : dom.model.value;
     await browser.storage.local.set({
+      connectionMode: connectionMode,
       endpoint:     dom.endpoint.value.trim().replace(/\/+$/, ""),
       apiKey:       dom.apiKey.value.trim(),
+      openaiKey:    dom.openaiKey ? dom.openaiKey.value.trim() : "",
       anthropicKey: dom.anthropicKey.value.trim(),
       geminiKey:    dom.geminiKey.value.trim(),
-      model:        dom.model.value.trim(),
+      localEndpoint: dom.localEndpoint ? dom.localEndpoint.value.trim() : "",
+      model:        activeModel,
       systemPrompt: dom.systemPrompt.value.trim(),
       maxTokens:    parseInt(dom.maxTokens.value, 10) || 2048,
       temperature:  isNaN(parseFloat(dom.temperature.value)) ? 0.7 : parseFloat(dom.temperature.value),

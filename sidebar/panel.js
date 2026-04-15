@@ -8,10 +8,12 @@
 /* ═══════════════════════════ STATE ═════════════════════════════════ */
 const state = {
   model: 'gpt-4o',
+  connectionMode: '',     // 'proxy', 'direct', 'local'
   apiKey: '',
   anthropicKey: '',       // direct Anthropic API key
   geminiKey: '',          // direct Google AI API key
   endpoint: '',           // custom endpoint, empty = auto-detect
+  localEndpoint: '',      // local server URL
   messages: [],           // { role:'user'|'assistant', content:string }
   generating: false,
   abortController: null,
@@ -138,14 +140,21 @@ function normalizeFontSize(val) {
 async function loadStorage() {
   try {
     const data = await browser.storage.local.get([
-      'apiKey', 'anthropicKey', 'geminiKey', 'endpoint', 'model', 'theme',
+      'connectionMode', 'apiKey', 'anthropicKey', 'geminiKey', 'endpoint',
+      'localEndpoint', 'model', 'theme',
       'chatHistory', 'siteModels', 'singleTurn', 'streamingEnabled',
       'fontSize', 'responseLength', 'templates', 'systemPrompt', 'maxTokens', 'temperature',
     ]);
+    if (data.connectionMode)  state.connectionMode  = data.connectionMode;
     if (data.apiKey)          state.apiKey          = data.apiKey;
     if (data.anthropicKey)    state.anthropicKey    = data.anthropicKey;
     if (data.geminiKey)       state.geminiKey       = data.geminiKey;
     if (data.endpoint)        state.endpoint        = data.endpoint;
+    if (data.localEndpoint)   state.localEndpoint   = data.localEndpoint;
+    // In local mode, use localEndpoint as the active endpoint
+    if (state.connectionMode === 'local' && state.localEndpoint) {
+      state.endpoint = state.localEndpoint;
+    }
     if (data.model)           state.model           = data.model;
     if (data.theme)           state.theme           = data.theme;
     if (data.chatHistory)     state.chatHistory     = data.chatHistory;
@@ -337,10 +346,44 @@ function setModel(id) {
 }
 
 // Build the model dropdown menu dynamically from MODEL_LIST
+// Get models available for the current connection mode
+function getAvailableModels() {
+  // Proxy mode: all models are available (proxy routes them)
+  if (state.connectionMode === 'proxy' || state.endpoint) return MODEL_LIST;
+  // Direct mode: only show models for providers with keys
+  if (state.connectionMode === 'direct') {
+    return MODEL_LIST.filter(m => {
+      if (m.group === 'OpenAI' && state.apiKey) return true;
+      if (m.group === 'Anthropic' && state.anthropicKey) return true;
+      if (m.group === 'Google' && state.geminiKey) return true;
+      return false;
+    });
+  }
+  // Local mode: show all (will be replaced by discovered models in Phase 2)
+  if (state.connectionMode === 'local') return MODEL_LIST;
+  // No mode set: show all as fallback
+  return MODEL_LIST;
+}
+
 function buildModelMenu() {
   dom.modelMenu.textContent = '';
+  const models = getAvailableModels();
+  if (models.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'menu-section-label';
+    hint.textContent = 'Configure API keys in Settings';
+    hint.style.padding = '12px 10px';
+    hint.style.cursor = 'pointer';
+    hint.addEventListener('click', () => {
+      browser.runtime.openOptionsPage().catch(() => {
+        browser.tabs.create({ url: browser.runtime.getURL('settings/settings.html') });
+      });
+    });
+    dom.modelMenu.appendChild(hint);
+    return;
+  }
   let lastGroup = '';
-  MODEL_LIST.forEach(m => {
+  models.forEach(m => {
     if (m.group !== lastGroup) {
       if (lastGroup) {
         const divider = document.createElement('div');
@@ -368,10 +411,18 @@ function buildModelMenu() {
 // Listen for storage changes from settings page
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
+  if (changes.connectionMode) {
+    state.connectionMode = changes.connectionMode.newValue || '';
+    buildModelMenu();
+  }
   if (changes.apiKey)          state.apiKey          = changes.apiKey.newValue || '';
-  if (changes.anthropicKey)    state.anthropicKey    = changes.anthropicKey.newValue || '';
-  if (changes.geminiKey)       state.geminiKey       = changes.geminiKey.newValue || '';
+  if (changes.anthropicKey)    { state.anthropicKey = changes.anthropicKey.newValue || ''; buildModelMenu(); }
+  if (changes.geminiKey)       { state.geminiKey = changes.geminiKey.newValue || ''; buildModelMenu(); }
   if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
+  if (changes.localEndpoint) {
+    state.localEndpoint = changes.localEndpoint.newValue || '';
+    if (state.connectionMode === 'local') state.endpoint = state.localEndpoint;
+  }
   if (changes.model) {
     state.model = changes.model.newValue || 'gpt-4o';
     dom.modelName.textContent = modelLabel(state.model);

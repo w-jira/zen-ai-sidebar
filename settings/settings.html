@@ -43,105 +43,140 @@
       <!-- TAB 1: CONNECTION -->
       <div id="tab-connection" class="tab-panel" role="tabpanel">
 
-        <div id="onboarding-card" class="onboarding-card">
-          <div class="onboarding-header">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            Get started in 3 steps
-          </div>
-          <ol class="onboarding-steps">
-            <li><span class="step-num">1</span> Choose a backend or enter provider keys below</li>
-            <li><span class="step-num">2</span> Paste your API key(s)</li>
-            <li><span class="step-num">3</span> Click <strong>Test Connection</strong></li>
-          </ol>
+        <!-- Connection mode toggle -->
+        <div class="section-label">Connection Mode</div>
+        <div class="toggle-group" id="mode-toggle" style="margin-bottom:16px; width:100%;">
+          <button type="button" class="toggle-btn active" data-value="proxy" style="flex:1;">Proxy / Gateway</button>
+          <button type="button" class="toggle-btn" data-value="direct" style="flex:1;">Direct Keys</button>
+          <button type="button" class="toggle-btn" data-value="local" style="flex:1;">Local</button>
         </div>
 
-        <!-- Backend presets -->
-        <div class="section-label">Backend (OpenAI-compatible)</div>
-        <div id="preset-grid">
-          <button type="button" class="preset-card" data-endpoint="https://openrouter.ai/api/v1" data-preset="openrouter">
-            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-            <span class="preset-name">OpenRouter</span>
-            <span class="preset-tag">100+ models, one key</span>
-          </button>
-          <button type="button" class="preset-card" data-endpoint="https://api.openai.com/v1" data-preset="openai">
-            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-            <span class="preset-name">OpenAI</span>
-            <span class="preset-tag">Official API</span>
-          </button>
-          <button type="button" class="preset-card" data-endpoint="http://localhost:11434/v1" data-preset="ollama">
-            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <span class="preset-name">Ollama</span>
-            <span class="preset-tag">Local, free</span>
-          </button>
-          <button type="button" class="preset-card" data-endpoint="https://" data-preset="litellm">
-            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-            <span class="preset-name">LiteLLM</span>
-            <span class="preset-tag">Self-hosted proxy</span>
-          </button>
-          <button type="button" class="preset-card" data-endpoint="" data-preset="custom">
-            <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M16.24 7.76a6 6 0 0 1 0 8.49M4.93 4.93a10 10 0 0 0 0 14.14M7.76 7.76a6 6 0 0 0 0 8.49"/></svg>
-            <span class="preset-name">Custom</span>
-            <span class="preset-tag">Any compatible API</span>
-          </button>
-        </div>
-
-        <!-- Connection fields -->
-        <div class="card">
-          <div class="field">
-            <label for="endpoint">API Base URL</label>
-            <div class="input-hint">The base URL &mdash; <code>/chat/completions</code> is appended automatically</div>
-            <input type="url" id="endpoint" name="endpoint" placeholder="https://your-api.com/v1" spellcheck="false" autocomplete="off" />
+        <!-- ═══ PROXY MODE ═══ -->
+        <div id="mode-proxy">
+          <div class="section-label">Quick Setup</div>
+          <div id="preset-grid">
+            <button type="button" class="preset-card" data-endpoint="https://openrouter.ai/api/v1" data-preset="openrouter">
+              <span class="preset-name">OpenRouter</span>
+              <span class="preset-tag">100+ models, one key</span>
+            </button>
+            <button type="button" class="preset-card" data-endpoint="https://" data-preset="litellm">
+              <span class="preset-name">LiteLLM / VPS</span>
+              <span class="preset-tag">Self-hosted proxy</span>
+            </button>
+            <button type="button" class="preset-card" data-endpoint="" data-preset="custom">
+              <span class="preset-name">Custom</span>
+              <span class="preset-tag">Any OpenAI-compatible</span>
+            </button>
           </div>
 
-          <div class="field">
-            <label for="apiKey">API Key</label>
-            <div class="input-hint">Your API key or bearer token (for the backend above)</div>
-            <div class="password-row">
-              <input type="password" id="apiKey" name="apiKey" placeholder="sk-..." spellcheck="false" autocomplete="off" />
-              <button type="button" id="btn-toggle-key" aria-label="Show/hide API key">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-              </button>
+          <div class="card">
+            <div class="field">
+              <label for="endpoint">Proxy URL</label>
+              <div class="input-hint"><code>/chat/completions</code> is appended automatically</div>
+              <input type="url" id="endpoint" name="endpoint" placeholder="https://your-proxy.com/v1" spellcheck="false" autocomplete="off" />
             </div>
-          </div>
 
-          <div class="field">
-            <label for="model">Active Model</label>
-            <div class="input-hint">This model is used in the sidebar. Changes apply immediately.</div>
-            <select id="model" name="model">
-              <!-- Populated from MODEL_LIST in settings.js -->
-            </select>
-          </div>
+            <div class="field">
+              <label for="apiKey">API Key</label>
+              <div class="input-hint">Your proxy's API key or bearer token</div>
+              <div class="password-row">
+                <input type="password" id="apiKey" name="apiKey" placeholder="sk-... or proxy key" spellcheck="false" autocomplete="off" />
+                <button type="button" id="btn-toggle-key" aria-label="Show/hide API key">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
 
-          <div id="test-row">
-            <button type="button" id="btn-test" class="btn-secondary">Test Connection</button>
-            <span id="test-result"></span>
-          </div>
+            <div class="field">
+              <label for="model">Active Model</label>
+              <div class="input-hint">Changes apply instantly. <button type="button" id="btn-detect-models" class="btn-ghost" style="font-size:11px; display:inline; padding:0;">Detect models from endpoint</button></div>
+              <select id="model" name="model"></select>
+            </div>
 
-          <div class="card card-info" style="margin-top:12px; margin-bottom:0; border:none; padding:10px 0 0;">
-            <div class="info-row">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <p>Model changes apply instantly to the sidebar. API keys and endpoint are saved when you leave the field or click Save.</p>
+            <div id="test-row">
+              <button type="button" id="btn-test" class="btn-secondary">Test Connection</button>
+              <span id="test-result"></span>
             </div>
           </div>
         </div>
 
-        <!-- Direct provider keys -->
-        <div class="card">
-          <h2>Direct Provider Keys (optional)</h2>
-          <p class="section-desc">Use Claude or Gemini models without a proxy. Leave blank to route everything through the backend above.</p>
-
-          <div class="field">
-            <label for="anthropicKey">Anthropic API Key</label>
-            <div class="input-hint">For Claude models &mdash; used when no custom endpoint is set</div>
-            <input type="password" id="anthropicKey" name="anthropicKey" placeholder="sk-ant-..." spellcheck="false" autocomplete="off" />
+        <!-- ═══ DIRECT MODE ═══ -->
+        <div id="mode-direct" style="display:none;">
+          <div class="card">
+            <h2>OpenAI</h2>
+            <p class="section-desc">GPT-5.4, GPT-4o, o3, o4-mini</p>
+            <div class="field">
+              <label for="openaiKey">API Key</label>
+              <input type="password" id="openaiKey" name="openaiKey" placeholder="sk-..." spellcheck="false" autocomplete="off" />
+            </div>
           </div>
 
-          <div class="field">
-            <label for="geminiKey">Google AI API Key</label>
-            <div class="input-hint">For Gemini models &mdash; used when no custom endpoint is set</div>
-            <input type="password" id="geminiKey" name="geminiKey" placeholder="AIza..." spellcheck="false" autocomplete="off" />
+          <div class="card">
+            <h2>Anthropic</h2>
+            <p class="section-desc">Claude Opus 4.6, Sonnet 4.6, Haiku 4.5</p>
+            <div class="field">
+              <label for="anthropicKey">API Key</label>
+              <input type="password" id="anthropicKey" name="anthropicKey" placeholder="sk-ant-..." spellcheck="false" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Google AI</h2>
+            <p class="section-desc">Gemini 3.1 Pro, Flash, Flash-Lite</p>
+            <div class="field">
+              <label for="geminiKey">API Key</label>
+              <input type="password" id="geminiKey" name="geminiKey" placeholder="AIza..." spellcheck="false" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="field">
+              <label for="model-direct">Active Model</label>
+              <div class="input-hint">Only models for configured providers are shown.</div>
+              <select id="model-direct" name="model-direct"></select>
+            </div>
+
+            <div id="test-row-direct">
+              <button type="button" id="btn-test-direct" class="btn-secondary">Test Connection</button>
+              <span id="test-result-direct"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ LOCAL MODE ═══ -->
+        <div id="mode-local" style="display:none;">
+          <div class="card">
+            <h2>Local Server</h2>
+            <div class="toggle-group" id="local-provider-toggle" style="margin-bottom:12px; width:100%;">
+              <button type="button" class="toggle-btn active" data-value="ollama" style="flex:1;">Ollama</button>
+              <button type="button" class="toggle-btn" data-value="lmstudio" style="flex:1;">LM Studio</button>
+              <button type="button" class="toggle-btn" data-value="custom" style="flex:1;">Custom URL</button>
+            </div>
+
+            <div class="field">
+              <label for="localEndpoint">Server URL</label>
+              <input type="url" id="localEndpoint" name="localEndpoint" value="http://localhost:11434/v1" spellcheck="false" autocomplete="off" />
+            </div>
+
+            <div class="field">
+              <label for="model-local">Active Model</label>
+              <div class="input-hint"><button type="button" id="btn-detect-local" class="btn-ghost" style="font-size:11px; display:inline; padding:0;">Detect installed models</button></div>
+              <select id="model-local" name="model-local"></select>
+            </div>
+
+            <div id="test-row-local">
+              <button type="button" id="btn-test-local" class="btn-secondary">Test Connection</button>
+              <span id="test-result-local"></span>
+            </div>
+
+            <div class="card card-info" style="margin-top:12px; margin-bottom:0; border:none; padding:10px 0 0;">
+              <div class="info-row">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <p>Make sure your local server is running. Ollama: <code>ollama serve</code> &middot; LM Studio: enable local server in settings.</p>
+              </div>
+            </div>
           </div>
         </div>
 
