@@ -15,6 +15,36 @@ const DEFAULT_PROFILES = [
   { id: "unhinged",   name: "Unhinged",   systemPrompt: "You are an unhinged, brutally honest AI with zero filter. You cuss freely, roast without mercy, and drip with sarcasm. You still answer questions accurately and helpfully — you just do it like a foul-mouthed friend who has no chill. Be vulgar, be savage, be funny. Never hold back.", temperature: 1.0, maxTokens: 4096 },
 ];
 
+// Must match MODEL_LIST in panel.js
+const MODEL_LIST = [
+  { id: "gpt-5.4",           name: "GPT-5.4",            group: "OpenAI" },
+  { id: "gpt-5.4-mini",      name: "GPT-5.4 mini",       group: "OpenAI" },
+  { id: "gpt-5.4-nano",      name: "GPT-5.4 nano",       group: "OpenAI" },
+  { id: "gpt-5.3",           name: "GPT-5.3 Instant",    group: "OpenAI" },
+  { id: "o3",                name: "o3",                  group: "OpenAI" },
+  { id: "o4-mini",           name: "o4-mini",             group: "OpenAI" },
+  { id: "gpt-4o",            name: "GPT-4o",              group: "OpenAI" },
+  { id: "gpt-4o-mini",       name: "GPT-4o mini",         group: "OpenAI" },
+  { id: "claude-opus-4-6",   name: "Claude Opus 4.6",     group: "Anthropic" },
+  { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6",   group: "Anthropic" },
+  { id: "claude-haiku-4-5",  name: "Claude Haiku 4.5",    group: "Anthropic" },
+  { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", group: "Anthropic" },
+  { id: "claude-3-7-sonnet-20250219", name: "Claude 3.7 Sonnet", group: "Anthropic" },
+  { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro",  group: "Google" },
+  { id: "gemini-3.1-flash",  name: "Gemini 3.1 Flash",    group: "Google" },
+  { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite", group: "Google" },
+  { id: "gemini-2.5-pro",    name: "Gemini 2.5 Pro",      group: "Google" },
+  { id: "meta-llama/llama-4-maverick", name: "Llama 4 Maverick", group: "Meta" },
+  { id: "meta-llama/llama-4-scout", name: "Llama 4 Scout", group: "Meta" },
+  { id: "grok-4.20",         name: "Grok 4.20",           group: "xAI" },
+  { id: "grok-4.1-fast",     name: "Grok 4.1 Fast",       group: "xAI" },
+  { id: "deepseek/deepseek-r1", name: "DeepSeek R1",      group: "DeepSeek" },
+  { id: "deepseek/deepseek-chat", name: "DeepSeek Chat",  group: "DeepSeek" },
+  { id: "mistral-small-2603", name: "Mistral Small 4",    group: "Mistral" },
+  { id: "mistral-large-latest", name: "Mistral Large",    group: "Mistral" },
+  { id: "codestral-latest",  name: "Codestral",           group: "Mistral" },
+];
+
 /* ═══════════════════════════ DOM REFS ═════════════════════════════ */
 const $ = (id) => document.getElementById(id);
 
@@ -74,6 +104,33 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   });
 });
 
+/* ═══════════════════════════ MODEL SELECT BUILDER ══════════════════ */
+function buildModelSelect(selectedId) {
+  dom.model.textContent = "";
+  let lastGroup = "";
+  let optgroup;
+  MODEL_LIST.forEach((m) => {
+    if (m.group !== lastGroup) {
+      optgroup = document.createElement("optgroup");
+      optgroup.label = m.group;
+      dom.model.appendChild(optgroup);
+      lastGroup = m.group;
+    }
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.name;
+    if (m.id === selectedId) opt.selected = true;
+    optgroup.appendChild(opt);
+  });
+}
+
+// Auto-save model change to storage immediately (no Save button needed)
+dom.model.addEventListener("change", async () => {
+  const id = dom.model.value;
+  await browser.storage.local.set({ model: id });
+  showStatus(dom.saveStatus, "Model updated", "ok");
+});
+
 /* ═══════════════════════════ BACKEND PRESETS ═══════════════════════ */
 dom.presetGrid.addEventListener("click", (e) => {
   const card = e.target.closest(".preset-card");
@@ -102,7 +159,7 @@ async function loadSettings() {
   dom.apiKey.value       = stored.apiKey       || "";
   dom.anthropicKey.value = stored.anthropicKey || "";
   dom.geminiKey.value    = stored.geminiKey    || "";
-  dom.model.value        = stored.model        || "gpt-4o";
+  buildModelSelect(stored.model || "gpt-4o");
   dom.systemPrompt.value = stored.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   dom.maxTokens.value    = stored.maxTokens    || 2048;
   dom.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
@@ -162,6 +219,16 @@ dom.settingsForm.addEventListener("submit", async (e) => {
   }
 });
 
+/* ═══════════════════════════ AUTO-SAVE KEY FIELDS ═════════════════ */
+// Save connection fields on blur so sidebar picks them up immediately
+["endpoint", "apiKey", "anthropicKey", "geminiKey"].forEach((field) => {
+  dom[field].addEventListener("change", async () => {
+    const obj = {};
+    obj[field === "endpoint" ? "endpoint" : field] = dom[field].value.trim();
+    await browser.storage.local.set(obj);
+  });
+});
+
 /* ═══════════════════════════ TEST CONNECTION ═══════════════════════ */
 dom.btnTest.addEventListener("click", async () => {
   const endpoint = dom.endpoint.value.trim().replace(/\/+$/, "");
@@ -170,13 +237,19 @@ dom.btnTest.addEventListener("click", async () => {
   const anthropicKey = dom.anthropicKey.value.trim();
   const geminiKey    = dom.geminiKey.value.trim();
 
-  const isLocal = endpoint.startsWith("http://localhost") || endpoint.startsWith("http://127.0.0.1");
-  const isAnthropic = !endpoint && (model.startsWith("claude") || anthropicKey);
-  const isGemini = !endpoint && (model.startsWith("gemini") || geminiKey);
+  const isLocal = endpoint && (endpoint.startsWith("http://localhost") || endpoint.startsWith("http://127.0.0.1"));
+  const isAnthropic = !endpoint && model.startsWith("claude");
+  const isGemini = !endpoint && model.startsWith("gemini");
 
-  // Need at least one credential
-  if (!apiKey && !anthropicKey && !geminiKey && !isLocal) {
-    showStatus(dom.testResult, "Enter an API key first", "err");
+  // Need at least one credential for the detected provider
+  const effectiveKey = isAnthropic ? (anthropicKey || apiKey)
+                     : isGemini    ? (geminiKey || apiKey)
+                     : apiKey;
+  if (!effectiveKey && !isLocal) {
+    const hint = isAnthropic ? "Enter an Anthropic key (or API key) to test Claude models"
+               : isGemini    ? "Enter a Google AI key (or API key) to test Gemini models"
+               : "Enter an API key to test the connection";
+    showStatus(dom.testResult, hint, "err");
     return;
   }
 
@@ -187,11 +260,10 @@ dom.btnTest.addEventListener("click", async () => {
     let url, headers, body;
 
     if (isAnthropic) {
-      const key = anthropicKey || apiKey;
       url = "https://api.anthropic.com/v1/messages";
       headers = {
         "Content-Type": "application/json",
-        "x-api-key": key,
+        "x-api-key": effectiveKey,
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
       };
@@ -201,9 +273,8 @@ dom.btnTest.addEventListener("click", async () => {
         max_tokens: 10,
       });
     } else if (isGemini) {
-      const key = geminiKey || apiKey;
       url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-            (model || "gemini-3.1-flash") + ":generateContent?key=" + key;
+            (model || "gemini-3.1-flash") + ":generateContent?key=" + effectiveKey;
       headers = { "Content-Type": "application/json" };
       body = JSON.stringify({
         contents: [{ role: "user", parts: [{ text: "Reply with: OK" }] }],
@@ -213,7 +284,7 @@ dom.btnTest.addEventListener("click", async () => {
       const base = endpoint || "https://api.openai.com/v1";
       url = base.endsWith("/chat/completions") ? base : base + "/chat/completions";
       headers = { "Content-Type": "application/json" };
-      if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+      if (effectiveKey) headers["Authorization"] = "Bearer " + effectiveKey;
       body = JSON.stringify({
         model: model || "gpt-4o",
         messages: [{ role: "user", content: "Reply with: OK" }],

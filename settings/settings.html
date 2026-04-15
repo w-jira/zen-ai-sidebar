@@ -108,13 +108,22 @@
 
           <div class="field">
             <label for="model">Active Model</label>
-            <div class="input-hint">Exact model string sent to your API</div>
-            <input type="text" id="model" name="model" placeholder="gpt-4o" spellcheck="false" autocomplete="off" />
+            <div class="input-hint">This model is used in the sidebar. Changes apply immediately.</div>
+            <select id="model" name="model">
+              <!-- Populated from MODEL_LIST in settings.js -->
+            </select>
           </div>
 
           <div id="test-row">
             <button type="button" id="btn-test" class="btn-secondary">Test Connection</button>
             <span id="test-result"></span>
+          </div>
+
+          <div class="card card-info" style="margin-top:12px; margin-bottom:0; border:none; padding:10px 0 0;">
+            <div class="info-row">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <p>Model changes apply instantly to the sidebar. API keys and endpoint are saved when you leave the field or click Save.</p>
+            </div>
           </div>
         </div>
 
