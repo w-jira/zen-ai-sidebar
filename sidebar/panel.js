@@ -12,7 +12,7 @@ const state = {
   messages: [],           // { role:'user'|'assistant', content:string }
   generating: false,
   abortController: null,
-  theme: 'light',
+  theme: 'dark',
   pageCtx: { url: '', title: '', content: '' },
   chatHistory: [],        // [{ id, messages, timestamp, hostname }]
   siteModels: {},         // { hostname: modelId }
