@@ -392,6 +392,7 @@ textarea, input, select {
 .msg {
   display: flex;
   gap: 8px;
+  align-items: flex-start;
   animation: slideUp 180ms ease forwards;
   max-width: 100%;
 }
@@ -412,7 +413,7 @@ textarea, input, select {
   font-size: 9px;
   font-weight: 700;
   color: var(--text3);
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .msg-bubble {
@@ -756,12 +757,12 @@ textarea, input, select {
 
 #input-box {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--radius-input);
-  padding: 8px 8px 8px 12px;
+  padding: 8px 12px;
   transition: border-color 150ms, box-shadow 150ms;
 }
 
@@ -777,10 +778,14 @@ textarea, input, select {
 #chat-input {
   flex: 1;
   resize: none;
+  border: none;
+  outline: none;
   font-size: var(--font-size-base);
+  font-family: inherit;
   line-height: var(--line-height);
   color: var(--text);
   background: transparent;
+  padding: 2px 0;
   max-height: 140px;
   overflow-y: auto;
   scrollbar-width: none;
