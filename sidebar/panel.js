@@ -9,6 +9,8 @@
 const state = {
   model: 'gpt-4o',
   apiKey: '',
+  anthropicKey: '',       // direct Anthropic API key
+  geminiKey: '',          // direct Google AI API key
   endpoint: '',           // custom endpoint, empty = auto-detect
   messages: [],           // { role:'user'|'assistant', content:string }
   generating: false,
@@ -110,7 +112,7 @@ async function init() {
   updateFooterPills();
   updatePinUI();
 
-  if (!state.apiKey) {
+  if (!state.apiKey && !state.anthropicKey && !state.geminiKey) {
     dom.setupOverlay.style.display = 'flex';
   }
 
@@ -136,11 +138,13 @@ function normalizeFontSize(val) {
 async function loadStorage() {
   try {
     const data = await browser.storage.local.get([
-      'apiKey', 'endpoint', 'model', 'theme', 'chatHistory', 'siteModels',
-      'singleTurn', 'streamingEnabled', 'fontSize', 'responseLength', 'templates',
-      'systemPrompt', 'maxTokens', 'temperature',
+      'apiKey', 'anthropicKey', 'geminiKey', 'endpoint', 'model', 'theme',
+      'chatHistory', 'siteModels', 'singleTurn', 'streamingEnabled',
+      'fontSize', 'responseLength', 'templates', 'systemPrompt', 'maxTokens', 'temperature',
     ]);
     if (data.apiKey)          state.apiKey          = data.apiKey;
+    if (data.anthropicKey)    state.anthropicKey    = data.anthropicKey;
+    if (data.geminiKey)       state.geminiKey       = data.geminiKey;
     if (data.endpoint)        state.endpoint        = data.endpoint;
     if (data.model)           state.model           = data.model;
     if (data.theme)           state.theme           = data.theme;
@@ -360,6 +364,8 @@ function buildModelMenu() {
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   if (changes.apiKey)          state.apiKey          = changes.apiKey.newValue || '';
+  if (changes.anthropicKey)    state.anthropicKey    = changes.anthropicKey.newValue || '';
+  if (changes.geminiKey)       state.geminiKey       = changes.geminiKey.newValue || '';
   if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
   if (changes.model) {
     state.model = changes.model.newValue || 'gpt-4o';
@@ -842,9 +848,10 @@ function getApiEndpoint(streaming = false) {
   const provider = providerOf(state.model);
   if (provider === 'anthropic') return 'https://api.anthropic.com/v1/messages';
   if (provider === 'gemini') {
+    const key = state.geminiKey || state.apiKey;
     const method = streaming ? 'streamGenerateContent' : 'generateContent';
     const sseParam = streaming ? '&alt=sse' : '';
-    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:${method}?key=${state.apiKey}${sseParam}`;
+    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:${method}?key=${key}${sseParam}`;
   }
   return 'https://api.openai.com/v1/chat/completions';
 }
@@ -854,7 +861,7 @@ function getApiHeaders() {
   if (provider === 'anthropic') {
     return {
       'Content-Type': 'application/json',
-      'x-api-key': state.apiKey,
+      'x-api-key': state.anthropicKey || state.apiKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     };

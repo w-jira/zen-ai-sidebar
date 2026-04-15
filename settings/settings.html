@@ -12,7 +12,7 @@
 <body>
   <div id="page">
 
-    <!-- ─── Header ─────────────────────────────────────── -->
+    <!-- Header -->
     <header>
       <div id="header-inner">
         <div id="header-logo">
@@ -29,7 +29,7 @@
       </div>
     </header>
 
-    <!-- ─── Tab Nav ────────────────────────────────────── -->
+    <!-- Tab Nav -->
     <nav id="tab-nav" role="tablist">
       <button class="tab-btn active" data-tab="connection" role="tab" aria-selected="true">Connection</button>
       <button class="tab-btn" data-tab="models" role="tab" aria-selected="false">Models</button>
@@ -37,27 +37,26 @@
       <button class="tab-btn" data-tab="appearance" role="tab" aria-selected="false">Appearance</button>
     </nav>
 
-    <!-- ─── Form wrapper (settings.js submit handler) ──── -->
+    <!-- Form -->
     <form id="settings-form" novalidate>
 
-      <!-- ══════════ TAB 1: CONNECTION ══════════ -->
+      <!-- TAB 1: CONNECTION -->
       <div id="tab-connection" class="tab-panel" role="tabpanel">
 
-        <!-- Onboarding card (hidden when setup-done) -->
         <div id="onboarding-card" class="onboarding-card">
           <div class="onboarding-header">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             Get started in 3 steps
           </div>
           <ol class="onboarding-steps">
-            <li><span class="step-num">1</span> Choose a backend below</li>
-            <li><span class="step-num">2</span> Paste your API key</li>
+            <li><span class="step-num">1</span> Choose a backend or enter provider keys below</li>
+            <li><span class="step-num">2</span> Paste your API key(s)</li>
             <li><span class="step-num">3</span> Click <strong>Test Connection</strong></li>
           </ol>
         </div>
 
-        <!-- Backend preset buttons -->
-        <div class="section-label">Backend</div>
+        <!-- Backend presets -->
+        <div class="section-label">Backend (OpenAI-compatible)</div>
         <div id="preset-grid">
           <button type="button" class="preset-card" data-endpoint="https://openrouter.ai/api/v1" data-preset="openrouter">
             <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -72,7 +71,7 @@
           <button type="button" class="preset-card" data-endpoint="http://localhost:11434/v1" data-preset="ollama">
             <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <span class="preset-name">Ollama</span>
-            <span class="preset-tag">Local, free, private</span>
+            <span class="preset-tag">Local, free</span>
           </button>
           <button type="button" class="preset-card" data-endpoint="https://" data-preset="litellm">
             <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
@@ -82,25 +81,25 @@
           <button type="button" class="preset-card" data-endpoint="" data-preset="custom">
             <svg class="preset-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M16.24 7.76a6 6 0 0 1 0 8.49M4.93 4.93a10 10 0 0 0 0 14.14M7.76 7.76a6 6 0 0 0 0 8.49"/></svg>
             <span class="preset-name">Custom</span>
-            <span class="preset-tag">Any OpenAI-compatible API</span>
+            <span class="preset-tag">Any compatible API</span>
           </button>
         </div>
 
-        <!-- Connection fields card -->
+        <!-- Connection fields -->
         <div class="card">
           <div class="field">
             <label for="endpoint">API Base URL</label>
-            <div class="input-hint">The base URL — <code>/chat/completions</code> is appended automatically</div>
+            <div class="input-hint">The base URL &mdash; <code>/chat/completions</code> is appended automatically</div>
             <input type="url" id="endpoint" name="endpoint" placeholder="https://your-api.com/v1" spellcheck="false" autocomplete="off" />
           </div>
 
           <div class="field">
             <label for="apiKey">API Key</label>
-            <div class="input-hint">Your API key or bearer token</div>
+            <div class="input-hint">Your API key or bearer token (for the backend above)</div>
             <div class="password-row">
               <input type="password" id="apiKey" name="apiKey" placeholder="sk-..." spellcheck="false" autocomplete="off" />
               <button type="button" id="btn-toggle-key" aria-label="Show/hide API key">
-                <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                 </svg>
               </button>
@@ -109,7 +108,7 @@
 
           <div class="field">
             <label for="model">Active Model</label>
-            <div class="input-hint">Exact model string sent to your API — or manage your model list in the <strong>Models</strong> tab</div>
+            <div class="input-hint">Exact model string sent to your API</div>
             <input type="text" id="model" name="model" placeholder="gpt-4o" spellcheck="false" autocomplete="off" />
           </div>
 
@@ -119,36 +118,53 @@
           </div>
         </div>
 
+        <!-- Direct provider keys -->
+        <div class="card">
+          <h2>Direct Provider Keys (optional)</h2>
+          <p class="section-desc">Use Claude or Gemini models without a proxy. Leave blank to route everything through the backend above.</p>
+
+          <div class="field">
+            <label for="anthropicKey">Anthropic API Key</label>
+            <div class="input-hint">For Claude models &mdash; used when no custom endpoint is set</div>
+            <input type="password" id="anthropicKey" name="anthropicKey" placeholder="sk-ant-..." spellcheck="false" autocomplete="off" />
+          </div>
+
+          <div class="field">
+            <label for="geminiKey">Google AI API Key</label>
+            <div class="input-hint">For Gemini models &mdash; used when no custom endpoint is set</div>
+            <input type="password" id="geminiKey" name="geminiKey" placeholder="AIza..." spellcheck="false" autocomplete="off" />
+          </div>
+        </div>
+
       </div><!-- /tab-connection -->
 
-      <!-- ══════════ TAB 2: MODELS ══════════ -->
+      <!-- TAB 2: MODELS -->
       <div id="tab-models" class="tab-panel" style="display:none" role="tabpanel">
 
         <div class="card">
           <div class="card-header-row">
             <h2>Your Models</h2>
           </div>
-          <p class="section-desc">Manage your saved models. The active model is sent with every request. Click <em>Set default</em> to switch.</p>
+          <p class="section-desc">Manage your saved models. Click <em>Set default</em> to make a model active.</p>
 
           <div id="model-list"></div>
 
           <div id="model-empty" class="model-empty" style="display:none">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>No models yet — add one below</span>
+            <span>No models yet &mdash; add one below</span>
           </div>
         </div>
 
-        <!-- Add model form -->
         <div class="card">
           <h2>Add Model</h2>
           <div class="add-model-row">
             <div class="field" style="flex:1; margin-bottom:0">
               <label for="new-model-label">Display Name</label>
-              <input type="text" id="new-model-label" placeholder="GPT-4o" spellcheck="false" autocomplete="off" />
+              <input type="text" id="new-model-label" placeholder="GPT-5.4" spellcheck="false" autocomplete="off" />
             </div>
             <div class="field" style="flex:1.4; margin-bottom:0">
               <label for="new-model-id">Model ID</label>
-              <input type="text" id="new-model-id" placeholder="gpt-4o" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono); font-size:12.5px" />
+              <input type="text" id="new-model-id" placeholder="gpt-5.4" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono); font-size:12.5px" />
             </div>
             <button type="button" id="btn-add-model" class="btn-primary btn-add">Add</button>
           </div>
@@ -166,14 +182,36 @@
           </div>
         </div>
 
+        <div class="card card-info">
+          <div class="info-row">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>Models are auto-detected by prefix: <strong>claude-*</strong> uses Anthropic, <strong>gemini-*</strong> uses Google AI, everything else uses your backend URL. Set provider keys in the Connection tab to use models directly.</p>
+          </div>
+        </div>
+
       </div><!-- /tab-models -->
 
-      <!-- ══════════ TAB 3: BEHAVIOUR ══════════ -->
+      <!-- TAB 3: BEHAVIOUR -->
       <div id="tab-behaviour" class="tab-panel" style="display:none" role="tabpanel">
 
         <div class="card">
+          <h2>Personality Profile</h2>
+          <p class="section-desc">Switch between saved profiles or create your own. Each profile stores a system prompt, temperature, and token limit.</p>
+
+          <div class="field">
+            <label for="profile-select">Active Profile</label>
+            <select id="profile-select"></select>
+          </div>
+
+          <div class="profile-actions">
+            <button type="button" id="btn-save-profile" class="btn-secondary">Save as New Profile</button>
+            <button type="button" id="btn-delete-profile" class="btn-ghost" style="display:none">Delete Profile</button>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>System Prompt</h2>
-          <p class="section-desc">Customise how the assistant behaves. Page context is appended automatically when active.</p>
+          <p class="section-desc">Customise how the assistant behaves. Page context is appended automatically.</p>
           <div class="field">
             <textarea id="systemPrompt" name="systemPrompt" rows="6" placeholder="You are a helpful AI assistant..."></textarea>
           </div>
@@ -185,7 +223,7 @@
 
           <div class="field">
             <label for="maxTokens">Max Output Tokens</label>
-            <div class="input-hint">Maximum tokens in each response (128–32768)</div>
+            <div class="input-hint">Maximum tokens in each response (128&ndash;32768)</div>
             <input type="number" id="maxTokens" name="maxTokens" min="128" max="32768" step="128" value="2048" />
           </div>
 
@@ -194,7 +232,7 @@
               Temperature
               <span id="temperature-val" class="badge">0.7</span>
             </label>
-            <div class="input-hint">0 = deterministic &nbsp;·&nbsp; 1 = balanced &nbsp;·&nbsp; 2 = creative</div>
+            <div class="input-hint">0 = deterministic &middot; 1 = balanced &middot; 2 = creative</div>
             <input type="range" id="temperature" name="temperature" min="0" max="2" step="0.05" value="0.7" />
             <div class="range-labels"><span>0</span><span>1</span><span>2</span></div>
           </div>
@@ -209,7 +247,7 @@
 
       </div><!-- /tab-behaviour -->
 
-      <!-- ══════════ TAB 4: APPEARANCE ══════════ -->
+      <!-- TAB 4: APPEARANCE -->
       <div id="tab-appearance" class="tab-panel" style="display:none" role="tabpanel">
 
         <div class="card">
@@ -218,7 +256,6 @@
 
           <div class="toggle-group-row">
             <label class="toggle-group-label">Colour scheme</label>
-            <!-- Hidden select for settings.js compatibility -->
             <select id="theme-select" style="display:none">
               <option value="dark">Dark</option>
               <option value="light">Light</option>
@@ -247,7 +284,7 @@
 
       </div><!-- /tab-appearance -->
 
-      <!-- ─── Sticky footer ──────────────────────────────── -->
+      <!-- Sticky footer -->
       <div id="form-footer">
         <button type="submit" id="btn-save" class="btn-primary">Save Settings</button>
         <span id="save-status"></span>
@@ -257,225 +294,5 @@
   </div><!-- /page -->
 
   <script src="settings.js"></script>
-
-  <script>
-  // ─── Tab switching ────────────────────────────────────────────────────────────
-  (function() {
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabPanels = document.querySelectorAll('.tab-panel');
-
-    tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const target = btn.dataset.tab;
-        tabBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
-        tabPanels.forEach(p => { p.style.display = 'none'; });
-        btn.classList.add('active');
-        btn.setAttribute('aria-selected','true');
-        document.getElementById('tab-' + target).style.display = 'block';
-      });
-    });
-  })();
-
-  // ─── Backend presets ──────────────────────────────────────────────────────────
-  (function() {
-    const cards = document.querySelectorAll('.preset-card');
-    const endpointInput = document.getElementById('endpoint');
-
-    cards.forEach(card => {
-      card.addEventListener('click', () => {
-        cards.forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
-        const ep = card.dataset.endpoint;
-        endpointInput.value = ep;
-        if (ep === '') {
-          endpointInput.focus();
-        } else if (ep === 'https://') {
-          endpointInput.focus();
-          endpointInput.setSelectionRange(ep.length, ep.length);
-        }
-      });
-    });
-  })();
-
-  // ─── Theme toggle buttons (synced with hidden #theme-select for settings.js) ──
-  (function() {
-    const themeSelect = document.getElementById('theme-select');
-    const themeGroup = document.getElementById('theme-toggle-group');
-    const btns = themeGroup.querySelectorAll('.toggle-btn');
-
-    function syncTheme(value) {
-      btns.forEach(b => b.classList.toggle('active', b.dataset.value === value));
-      themeSelect.value = value;
-      themeSelect.dispatchEvent(new Event('change'));
-    }
-
-    btns.forEach(btn => {
-      btn.addEventListener('click', () => syncTheme(btn.dataset.value));
-    });
-
-    themeSelect.addEventListener('change', () => {
-      btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
-    });
-
-    // Sync toggle buttons after settings.js loads — poll once since programmatic
-    // .value assignment doesn't fire change events or trigger MutationObserver
-    setTimeout(() => {
-      btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
-    }, 50);
-  })();
-
-  // ─── Font size toggles ────────────────────────────────────────────────────────
-  (function() {
-    const group = document.getElementById('font-size-toggle-group');
-    const btns = group.querySelectorAll('.toggle-btn');
-
-    async function loadFontSize() {
-      const s = await browser.storage.local.get('fontSize');
-      const raw = s.fontSize || 'm';
-      // Normalize: accept both short ("s"/"m"/"l") and long ("small"/"medium"/"large")
-      const map = { small: 's', medium: 'm', large: 'l', s: 's', m: 'm', l: 'l' };
-      const size = map[raw] || 'm';
-      btns.forEach(b => b.classList.toggle('active', b.dataset.value === size));
-    }
-
-    btns.forEach(btn => {
-      btn.addEventListener('click', async () => {
-        btns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        await browser.storage.local.set({ fontSize: btn.dataset.value });
-      });
-    });
-
-    loadFontSize();
-  })();
-
-  // ─── Model management ─────────────────────────────────────────────────────────
-  function escapeSettingsHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  async function loadModels() {
-    const s = await browser.storage.local.get(['models', 'activeModel']);
-    const models = s.models || [];
-    const active = s.activeModel || '';
-    renderModelList(models, active);
-  }
-
-  function renderModelList(models, active) {
-    const list = document.getElementById('model-list');
-    const empty = document.getElementById('model-empty');
-    list.textContent = '';
-
-    if (models.length === 0) {
-      empty.style.display = 'flex';
-      return;
-    }
-    empty.style.display = 'none';
-
-    models.forEach((m, i) => {
-      const row = document.createElement('div');
-      row.className = 'model-row' + (m.id === active ? ' active' : '');
-
-      const dot = document.createElement('span');
-      dot.className = 'model-active-dot';
-      dot.title = m.id === active ? 'Active model' : 'Not active';
-
-      const labelSpan = document.createElement('span');
-      labelSpan.className = 'model-label';
-      labelSpan.textContent = m.label;
-
-      const idSpan = document.createElement('span');
-      idSpan.className = 'model-id';
-      idSpan.textContent = m.id;
-
-      const actions = document.createElement('div');
-      actions.className = 'model-actions';
-
-      if (m.id !== active) {
-        const setBtn = document.createElement('button');
-        setBtn.className = 'btn-ghost btn-sm';
-        setBtn.type = 'button';
-        setBtn.textContent = 'Set default';
-        setBtn.addEventListener('click', () => setActive(m.id));
-        actions.appendChild(setBtn);
-      } else {
-        const tag = document.createElement('span');
-        tag.className = 'tag-active';
-        tag.textContent = 'Default';
-        actions.appendChild(tag);
-      }
-
-      const delBtn = document.createElement('button');
-      delBtn.className = 'btn-icon btn-danger';
-      delBtn.type = 'button';
-      delBtn.title = 'Delete';
-      delBtn.insertAdjacentHTML('beforeend',
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
-        '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>'
-      );
-      delBtn.addEventListener('click', () => deleteModel(i));
-      actions.appendChild(delBtn);
-
-      row.appendChild(dot);
-      row.appendChild(labelSpan);
-      row.appendChild(idSpan);
-      row.appendChild(actions);
-      list.appendChild(row);
-    });
-  }
-
-  async function setActive(id) {
-    // Write both activeModel AND model so panel.js picks it up
-    await browser.storage.local.set({ activeModel: id, model: id });
-    const modelInput = document.getElementById('model');
-    if (modelInput) modelInput.value = id;
-    loadModels();
-  }
-
-  async function deleteModel(i) {
-    const s = await browser.storage.local.get(['models', 'activeModel']);
-    const models = s.models || [];
-    const deleted = models[i];
-    models.splice(i, 1);
-    // If we deleted the active model, clear it
-    const updates = { models };
-    if (deleted && deleted.id === s.activeModel) {
-      updates.activeModel = '';
-    }
-    await browser.storage.local.set(updates);
-    loadModels();
-  }
-
-  async function addModel() {
-    const label = document.getElementById('new-model-label').value.trim();
-    const id = document.getElementById('new-model-id').value.trim();
-    if (!label || !id) return;
-    const s = await browser.storage.local.get('models');
-    const models = s.models || [];
-    // Prevent duplicates
-    if (models.some(m => m.id === id)) {
-      document.getElementById('new-model-id').focus();
-      return;
-    }
-    models.push({ id, label });
-    await browser.storage.local.set({ models });
-    document.getElementById('new-model-label').value = '';
-    document.getElementById('new-model-id').value = '';
-    loadModels();
-  }
-
-  document.getElementById('btn-add-model').addEventListener('click', addModel);
-
-  // Quick-add chips — event delegation instead of inline onclick
-  document.getElementById('quick-add-chips').addEventListener('click', (e) => {
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    document.getElementById('new-model-id').value = chip.dataset.id;
-    document.getElementById('new-model-label').value = chip.dataset.label;
-    document.getElementById('new-model-id').focus();
-  });
-
-  loadModels();
-  </script>
 </body>
 </html>

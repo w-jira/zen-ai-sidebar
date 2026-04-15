@@ -789,3 +789,23 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
 }
 #save-status.ok  { color: var(--color-success); }
 #save-status.err { color: var(--color-error); }
+
+/* ─── Profile actions ───────────────────────── */
+.profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+#profile-select {
+  appearance: auto;
+}
+
+/* ─── Select styling ────────────────────────── */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 4L6 8L10 4' stroke='%237a7976' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}

@@ -1,126 +1,223 @@
-// settings.js
+"use strict";
+
+/* ╔══════════════════════════════════════════════════════════════════╗
+   ║  Zen AI Sidebar — settings.js                                    ║
+   ║  All logic in this file (no inline scripts — Firefox CSP)        ║
+   ╚══════════════════════════════════════════════════════════════════╝ */
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant integrated into a browser sidebar. Be concise and clear. When given page content, use it to answer questions about the page.";
 
-const fields = {
-  endpoint:     document.getElementById("endpoint"),
-  apiKey:       document.getElementById("apiKey"),
-  model:        document.getElementById("model"),
-  maxTokens:    document.getElementById("maxTokens"),
-  temperature:  document.getElementById("temperature"),
-  systemPrompt: document.getElementById("systemPrompt"),
+const DEFAULT_PROFILES = [
+  { id: "default",    name: "Default",    systemPrompt: DEFAULT_SYSTEM_PROMPT, temperature: 0.7, maxTokens: 2048 },
+  { id: "creative",   name: "Creative",   systemPrompt: "You are a creative writing assistant. Be imaginative, expressive, and playful.", temperature: 1.4, maxTokens: 4096 },
+  { id: "precise",    name: "Precise",    systemPrompt: "You are a precise, technical assistant. Give accurate, structured answers. Cite sources when possible.", temperature: 0.2, maxTokens: 2048 },
+  { id: "coder",      name: "Coder",      systemPrompt: "You are an expert programming assistant. Write clean, well-commented code. Explain your reasoning.", temperature: 0.3, maxTokens: 4096 },
+];
+
+/* ═══════════════════════════ DOM REFS ═════════════════════════════ */
+const $ = (id) => document.getElementById(id);
+
+const dom = {
+  // Connection
+  endpoint:     $("endpoint"),
+  apiKey:       $("apiKey"),
+  model:        $("model"),
+  btnToggleKey: $("btn-toggle-key"),
+  btnTest:      $("btn-test"),
+  testResult:   $("test-result"),
+  onboarding:   $("onboarding-card"),
+  presetGrid:   $("preset-grid"),
+  // Provider keys
+  anthropicKey: $("anthropicKey"),
+  geminiKey:    $("geminiKey"),
+  // Behaviour
+  profileSelect:  $("profile-select"),
+  systemPrompt:   $("systemPrompt"),
+  maxTokens:      $("maxTokens"),
+  temperature:    $("temperature"),
+  temperatureVal: $("temperature-val"),
+  btnResetPrompt: $("btn-reset-prompt"),
+  btnSaveProfile: $("btn-save-profile"),
+  btnDeleteProfile: $("btn-delete-profile"),
+  // Appearance
+  themeSelect:    $("theme-select"),
+  themeGroup:     $("theme-toggle-group"),
+  fontSizeGroup:  $("font-size-toggle-group"),
+  // Models
+  modelList:      $("model-list"),
+  modelEmpty:     $("model-empty"),
+  newModelLabel:  $("new-model-label"),
+  newModelId:     $("new-model-id"),
+  btnAddModel:    $("btn-add-model"),
+  quickAddChips:  $("quick-add-chips"),
+  // Form
+  settingsForm:   $("settings-form"),
+  btnSave:        $("btn-save"),
+  saveStatus:     $("save-status"),
 };
 
-const elTempVal      = document.getElementById("temperature-val");
-const elBtnSave      = document.getElementById("btn-save");
-const elSaveStatus   = document.getElementById("save-status");
-const elBtnTest      = document.getElementById("btn-test");
-const elTestResult   = document.getElementById("test-result");
-const elBtnToggleKey = document.getElementById("btn-toggle-key");
-const elBtnReset     = document.getElementById("btn-reset-prompt");
-const elTheme        = document.getElementById("theme-select");
-
-// ─── Load saved values ────────────────────────────────────────────────────────
-async function loadSettings() {
-  const stored = await browser.storage.local.get([
-    "endpoint", "apiKey", "model", "systemPrompt", "maxTokens", "temperature", "theme"
-  ]);
-
-  fields.endpoint.value     = stored.endpoint     || "";
-  fields.apiKey.value       = stored.apiKey       || "";
-  fields.model.value        = stored.model        || "gpt-4o";
-  fields.systemPrompt.value = stored.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-  fields.maxTokens.value    = stored.maxTokens    || 2048;
-  fields.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
-  elTempVal.textContent     = fields.temperature.value;
-
-  // Hide onboarding if already configured
-  if (stored.apiKey) {
-    const card = document.getElementById("onboarding-card");
-    if (card) card.style.display = "none";
-  }
-
-  const theme = stored.theme || "dark";
-  elTheme.value = theme;
-  document.documentElement.setAttribute("data-theme", theme === "system"
-    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-    : theme);
-}
-
-// ─── Save ─────────────────────────────────────────────────────────────────────
-document.getElementById("settings-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  try {
-    await browser.storage.local.set({
-      endpoint:     fields.endpoint.value.trim().replace(/\/+$/, ""),
-      apiKey:       fields.apiKey.value.trim(),
-      model:        fields.model.value.trim(),
-      systemPrompt: fields.systemPrompt.value.trim(),
-      maxTokens:    parseInt(fields.maxTokens.value, 10),
-      temperature:  parseFloat(fields.temperature.value),
-      theme:        elTheme.value
+/* ═══════════════════════════ TAB SWITCHING ═════════════════════════ */
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.tab;
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
     });
-    showStatus(elSaveStatus, "Saved", "ok");
-  } catch (err) {
-    showStatus(elSaveStatus, "Error saving", "err");
+    document.querySelectorAll(".tab-panel").forEach((p) => {
+      p.style.display = "none";
+    });
+    btn.classList.add("active");
+    btn.setAttribute("aria-selected", "true");
+    $("tab-" + target).style.display = "block";
+  });
+});
+
+/* ═══════════════════════════ BACKEND PRESETS ═══════════════════════ */
+dom.presetGrid.addEventListener("click", (e) => {
+  const card = e.target.closest(".preset-card");
+  if (!card) return;
+  dom.presetGrid.querySelectorAll(".preset-card").forEach((c) => c.classList.remove("selected"));
+  card.classList.add("selected");
+  const ep = card.dataset.endpoint;
+  dom.endpoint.value = ep;
+  if (ep === "") {
+    dom.endpoint.focus();
+  } else if (ep === "https://") {
+    dom.endpoint.focus();
+    dom.endpoint.setSelectionRange(ep.length, ep.length);
   }
 });
 
-// ─── Test connection ──────────────────────────────────────────────────────────
-elBtnTest.addEventListener("click", async () => {
-  const endpoint = fields.endpoint.value.trim().replace(/\/+$/, "");
-  const apiKey   = fields.apiKey.value.trim();
-  const model    = fields.model.value.trim();
+/* ═══════════════════════════ LOAD / SAVE ══════════════════════════ */
+async function loadSettings() {
+  const stored = await browser.storage.local.get([
+    "endpoint", "apiKey", "anthropicKey", "geminiKey",
+    "model", "systemPrompt", "maxTokens", "temperature",
+    "theme", "fontSize", "profiles", "activeProfile",
+  ]);
 
-  const isLocalEndpoint = endpoint.startsWith("http://localhost") || endpoint.startsWith("http://127.0.0.1");
-  if (!apiKey && !isLocalEndpoint) {
-    showStatus(elTestResult, "Enter an API key first", "err");
+  dom.endpoint.value     = stored.endpoint     || "";
+  dom.apiKey.value       = stored.apiKey       || "";
+  dom.anthropicKey.value = stored.anthropicKey || "";
+  dom.geminiKey.value    = stored.geminiKey    || "";
+  dom.model.value        = stored.model        || "gpt-4o";
+  dom.systemPrompt.value = stored.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  dom.maxTokens.value    = stored.maxTokens    || 2048;
+  dom.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
+  dom.temperatureVal.textContent = parseFloat(dom.temperature.value).toFixed(2);
+
+  // Hide onboarding if already configured
+  if (stored.apiKey || stored.anthropicKey || stored.geminiKey) {
+    dom.onboarding.style.display = "none";
+  }
+
+  // Theme
+  const theme = stored.theme || "dark";
+  dom.themeSelect.value = theme;
+  applyTheme(theme);
+  syncThemeButtons(theme);
+
+  // Font size
+  const fontSize = normalizeFontSize(stored.fontSize);
+  syncFontSizeButtons(fontSize);
+
+  // Profiles
+  loadProfiles(stored.profiles, stored.activeProfile);
+
+  // Highlight matching preset card
+  highlightPreset(stored.endpoint || "");
+}
+
+function normalizeFontSize(val) {
+  if (!val) return "m";
+  const map = { small: "s", medium: "m", large: "l", s: "s", m: "m", l: "l" };
+  return map[val] || "m";
+}
+
+function highlightPreset(endpoint) {
+  dom.presetGrid.querySelectorAll(".preset-card").forEach((card) => {
+    card.classList.toggle("selected", card.dataset.endpoint === endpoint);
+  });
+}
+
+dom.settingsForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await browser.storage.local.set({
+      endpoint:     dom.endpoint.value.trim().replace(/\/+$/, ""),
+      apiKey:       dom.apiKey.value.trim(),
+      anthropicKey: dom.anthropicKey.value.trim(),
+      geminiKey:    dom.geminiKey.value.trim(),
+      model:        dom.model.value.trim(),
+      systemPrompt: dom.systemPrompt.value.trim(),
+      maxTokens:    parseInt(dom.maxTokens.value, 10),
+      temperature:  parseFloat(dom.temperature.value),
+      theme:        dom.themeSelect.value,
+    });
+    showStatus(dom.saveStatus, "Saved", "ok");
+  } catch (err) {
+    showStatus(dom.saveStatus, "Error saving", "err");
+  }
+});
+
+/* ═══════════════════════════ TEST CONNECTION ═══════════════════════ */
+dom.btnTest.addEventListener("click", async () => {
+  const endpoint = dom.endpoint.value.trim().replace(/\/+$/, "");
+  const apiKey   = dom.apiKey.value.trim();
+  const model    = dom.model.value.trim();
+  const anthropicKey = dom.anthropicKey.value.trim();
+  const geminiKey    = dom.geminiKey.value.trim();
+
+  const isLocal = endpoint.startsWith("http://localhost") || endpoint.startsWith("http://127.0.0.1");
+  const isAnthropic = !endpoint && (model.startsWith("claude") || anthropicKey);
+  const isGemini = !endpoint && (model.startsWith("gemini") || geminiKey);
+
+  // Need at least one credential
+  if (!apiKey && !anthropicKey && !geminiKey && !isLocal) {
+    showStatus(dom.testResult, "Enter an API key first", "err");
     return;
   }
 
-  elBtnTest.disabled = true;
-  showStatus(elTestResult, "Testing…", "");
+  dom.btnTest.disabled = true;
+  showStatus(dom.testResult, "Testing\u2026", "");
 
   try {
-    // Detect provider from endpoint or model to use correct format
-    const isAnthropic = endpoint.includes("anthropic.com") || (model && model.startsWith("claude"));
-    const isGemini = endpoint.includes("generativelanguage.googleapis.com") || (model && model.startsWith("gemini"));
-
     let url, headers, body;
 
-    if (!endpoint && isAnthropic) {
-      // Direct Anthropic API (no custom endpoint)
+    if (isAnthropic) {
+      const key = anthropicKey || apiKey;
       url = "https://api.anthropic.com/v1/messages";
       headers = {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
+        "x-api-key": key,
         "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "anthropic-dangerous-direct-browser-access": "true",
       };
       body = JSON.stringify({
         model: model || "claude-sonnet-4-6",
         messages: [{ role: "user", content: "Reply with: OK" }],
-        max_tokens: 10
+        max_tokens: 10,
       });
-    } else if (!endpoint && isGemini) {
-      // Direct Gemini API (no custom endpoint)
-      url = `https://generativelanguage.googleapis.com/v1beta/models/${model || "gemini-3.1-flash"}:generateContent?key=${apiKey}`;
+    } else if (isGemini) {
+      const key = geminiKey || apiKey;
+      url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+            (model || "gemini-3.1-flash") + ":generateContent?key=" + key;
       headers = { "Content-Type": "application/json" };
       body = JSON.stringify({
         contents: [{ role: "user", parts: [{ text: "Reply with: OK" }] }],
-        generationConfig: { maxOutputTokens: 10 }
+        generationConfig: { maxOutputTokens: 10 },
       });
     } else {
-      // OpenAI-compatible (default)
       const base = endpoint || "https://api.openai.com/v1";
-      url = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
+      url = base.endsWith("/chat/completions") ? base : base + "/chat/completions";
       headers = { "Content-Type": "application/json" };
-      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
       body = JSON.stringify({
         model: model || "gpt-4o",
         messages: [{ role: "user", content: "Reply with: OK" }],
         max_tokens: 10,
-        stream: false
+        stream: false,
       });
     }
 
@@ -129,61 +226,266 @@ elBtnTest.addEventListener("click", async () => {
     if (res.ok) {
       const data = await res.json();
       let reply;
-      // Only use native response parsing when we actually used the native API
-      if (!endpoint && isAnthropic) {
-        reply = data.content?.[0]?.text?.trim() || "(no content)";
-      } else if (!endpoint && isGemini) {
-        reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(no content)";
+      if (isAnthropic) {
+        reply = (data.content && data.content[0] && data.content[0].text) || "";
+      } else if (isGemini) {
+        reply = (data.candidates && data.candidates[0] && data.candidates[0].content &&
+                 data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+                 data.candidates[0].content.parts[0].text) || "";
       } else {
-        reply = data.choices?.[0]?.message?.content?.trim() || "(no content)";
+        reply = (data.choices && data.choices[0] && data.choices[0].message &&
+                 data.choices[0].message.content) || "";
       }
-      showStatus(elTestResult, `✓ Connected — "${reply}"`, "ok");
+      showStatus(dom.testResult, "\u2713 Connected \u2014 \"" + reply.trim().slice(0, 40) + "\"", "ok");
     } else {
-      const txt = await res.text();
-      showStatus(elTestResult, `✗ ${res.status}: ${txt.slice(0, 80)}`, "err");
+      const txt = await res.text().catch(() => "");
+      showStatus(dom.testResult, "\u2717 " + res.status + ": " + txt.slice(0, 80), "err");
     }
   } catch (err) {
-    showStatus(elTestResult, `✗ ${err.message}`, "err");
+    showStatus(dom.testResult, "\u2717 " + err.message, "err");
   } finally {
-    elBtnTest.disabled = false;
+    dom.btnTest.disabled = false;
   }
 });
 
-// ─── Toggle API key visibility ────────────────────────────────────────────────
-elBtnToggleKey.addEventListener("click", () => {
-  const isHidden = fields.apiKey.type === "password";
-  fields.apiKey.type = isHidden ? "text" : "password";
-  elBtnToggleKey.innerHTML = isHidden
-    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
-    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+/* ═══════════════════════════ API KEY TOGGLE ════════════════════════ */
+dom.btnToggleKey.addEventListener("click", () => {
+  const isHidden = dom.apiKey.type === "password";
+  dom.apiKey.type = isHidden ? "text" : "password";
 });
 
-// ─── Temperature live label ───────────────────────────────────────────────────
-fields.temperature.addEventListener("input", () => {
-  elTempVal.textContent = parseFloat(fields.temperature.value).toFixed(2);
+/* ═══════════════════════════ TEMPERATURE LABEL ════════════════════ */
+dom.temperature.addEventListener("input", () => {
+  dom.temperatureVal.textContent = parseFloat(dom.temperature.value).toFixed(2);
 });
 
-// ─── Reset system prompt ──────────────────────────────────────────────────────
-elBtnReset.addEventListener("click", () => {
-  fields.systemPrompt.value = DEFAULT_SYSTEM_PROMPT;
+/* ═══════════════════════════ RESET PROMPT ══════════════════════════ */
+dom.btnResetPrompt.addEventListener("click", () => {
+  dom.systemPrompt.value = DEFAULT_SYSTEM_PROMPT;
 });
 
-// ─── Theme preview ────────────────────────────────────────────────────────────
-elTheme.addEventListener("change", () => {
-  const t = elTheme.value;
-  document.documentElement.setAttribute("data-theme",
-    t === "system"
-      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : t
-  );
+/* ═══════════════════════════ PROFILES ═════════════════════════════ */
+let profiles = [];
+let activeProfileId = "default";
+
+function loadProfiles(stored, activeId) {
+  profiles = stored && stored.length > 0 ? stored : [...DEFAULT_PROFILES];
+  activeProfileId = activeId || "default";
+  renderProfileSelect();
+  applyProfile(activeProfileId);
+}
+
+function renderProfileSelect() {
+  dom.profileSelect.textContent = "";
+  profiles.forEach((p) => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === activeProfileId) opt.selected = true;
+    dom.profileSelect.appendChild(opt);
+  });
+}
+
+function applyProfile(id) {
+  const p = profiles.find((pr) => pr.id === id);
+  if (!p) return;
+  activeProfileId = id;
+  dom.systemPrompt.value = p.systemPrompt;
+  dom.temperature.value = p.temperature;
+  dom.temperatureVal.textContent = parseFloat(p.temperature).toFixed(2);
+  dom.maxTokens.value = p.maxTokens;
+  // Show/hide delete button (can't delete defaults)
+  dom.btnDeleteProfile.style.display = DEFAULT_PROFILES.some((d) => d.id === id) ? "none" : "inline";
+}
+
+dom.profileSelect.addEventListener("change", () => {
+  activeProfileId = dom.profileSelect.value;
+  applyProfile(activeProfileId);
+  browser.storage.local.set({ activeProfile: activeProfileId });
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+dom.btnSaveProfile.addEventListener("click", async () => {
+  const name = prompt("Profile name:");
+  if (!name) return;
+  const id = "profile_" + Date.now();
+  const profile = {
+    id,
+    name,
+    systemPrompt: dom.systemPrompt.value.trim(),
+    temperature: parseFloat(dom.temperature.value),
+    maxTokens: parseInt(dom.maxTokens.value, 10),
+  };
+  profiles.push(profile);
+  activeProfileId = id;
+  renderProfileSelect();
+  dom.btnDeleteProfile.style.display = "inline";
+  await browser.storage.local.set({ profiles, activeProfile: id });
+  showStatus(dom.saveStatus, "Profile saved", "ok");
+});
+
+dom.btnDeleteProfile.addEventListener("click", async () => {
+  if (DEFAULT_PROFILES.some((d) => d.id === activeProfileId)) return;
+  profiles = profiles.filter((p) => p.id !== activeProfileId);
+  activeProfileId = "default";
+  renderProfileSelect();
+  applyProfile(activeProfileId);
+  await browser.storage.local.set({ profiles, activeProfile: activeProfileId });
+  showStatus(dom.saveStatus, "Profile deleted", "ok");
+});
+
+/* ═══════════════════════════ THEME ═════════════════════════════════ */
+function applyTheme(theme) {
+  const resolved = theme === "system"
+    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : theme;
+  document.documentElement.setAttribute("data-theme", resolved);
+}
+
+function syncThemeButtons(theme) {
+  dom.themeGroup.querySelectorAll(".toggle-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.value === theme);
+  });
+}
+
+dom.themeGroup.addEventListener("click", (e) => {
+  const btn = e.target.closest(".toggle-btn");
+  if (!btn) return;
+  const value = btn.dataset.value;
+  dom.themeSelect.value = value;
+  applyTheme(value);
+  syncThemeButtons(value);
+});
+
+/* ═══════════════════════════ FONT SIZE ═════════════════════════════ */
+function syncFontSizeButtons(size) {
+  dom.fontSizeGroup.querySelectorAll(".toggle-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.value === size);
+  });
+}
+
+dom.fontSizeGroup.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".toggle-btn");
+  if (!btn) return;
+  dom.fontSizeGroup.querySelectorAll(".toggle-btn").forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+  await browser.storage.local.set({ fontSize: btn.dataset.value });
+});
+
+/* ═══════════════════════════ MODEL MANAGEMENT ═════════════════════ */
+async function loadModels() {
+  const s = await browser.storage.local.get(["models", "activeModel"]);
+  const models = s.models || [];
+  const active = s.activeModel || "";
+  renderModelList(models, active);
+}
+
+function renderModelList(models, active) {
+  dom.modelList.textContent = "";
+
+  if (models.length === 0) {
+    dom.modelEmpty.style.display = "flex";
+    return;
+  }
+  dom.modelEmpty.style.display = "none";
+
+  models.forEach((m, i) => {
+    const row = document.createElement("div");
+    row.className = "model-row" + (m.id === active ? " active" : "");
+
+    const dot = document.createElement("span");
+    dot.className = "model-active-dot";
+    dot.title = m.id === active ? "Active model" : "Not active";
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "model-label";
+    labelSpan.textContent = m.label;
+
+    const idSpan = document.createElement("span");
+    idSpan.className = "model-id";
+    idSpan.textContent = m.id;
+
+    const actions = document.createElement("div");
+    actions.className = "model-actions";
+
+    if (m.id !== active) {
+      const setBtn = document.createElement("button");
+      setBtn.className = "btn-ghost btn-sm";
+      setBtn.type = "button";
+      setBtn.textContent = "Set default";
+      setBtn.addEventListener("click", async () => {
+        await browser.storage.local.set({ activeModel: m.id, model: m.id });
+        dom.model.value = m.id;
+        loadModels();
+      });
+      actions.appendChild(setBtn);
+    } else {
+      const tag = document.createElement("span");
+      tag.className = "tag-active";
+      tag.textContent = "Default";
+      actions.appendChild(tag);
+    }
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-icon btn-danger";
+    delBtn.type = "button";
+    delBtn.title = "Delete";
+    delBtn.textContent = "\u00D7"; // &times;
+    delBtn.addEventListener("click", async () => {
+      const s = await browser.storage.local.get(["models", "activeModel"]);
+      const models = s.models || [];
+      const deleted = models[i];
+      models.splice(i, 1);
+      const updates = { models };
+      if (deleted && deleted.id === s.activeModel) {
+        updates.activeModel = "";
+      }
+      await browser.storage.local.set(updates);
+      loadModels();
+    });
+    actions.appendChild(delBtn);
+
+    row.appendChild(dot);
+    row.appendChild(labelSpan);
+    row.appendChild(idSpan);
+    row.appendChild(actions);
+    dom.modelList.appendChild(row);
+  });
+}
+
+dom.btnAddModel.addEventListener("click", async () => {
+  const label = dom.newModelLabel.value.trim();
+  const id = dom.newModelId.value.trim();
+  if (!label || !id) return;
+  const s = await browser.storage.local.get("models");
+  const models = s.models || [];
+  if (models.some((m) => m.id === id)) {
+    dom.newModelId.focus();
+    return;
+  }
+  models.push({ id, label });
+  await browser.storage.local.set({ models });
+  dom.newModelLabel.value = "";
+  dom.newModelId.value = "";
+  loadModels();
+});
+
+dom.quickAddChips.addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  dom.newModelId.value = chip.dataset.id;
+  dom.newModelLabel.value = chip.dataset.label;
+  dom.newModelId.focus();
+});
+
+/* ═══════════════════════════ HELPERS ══════════════════════════════ */
 function showStatus(el, msg, type) {
   el.textContent = msg;
   el.className = type;
-  if (type === "ok") setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
+  if (type === "ok") {
+    setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
+  }
 }
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+/* ═══════════════════════════ BOOT ═════════════════════════════════ */
 loadSettings();
+loadModels();
