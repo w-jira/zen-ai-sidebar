@@ -12,7 +12,7 @@ const DEFAULT_PROFILES = [
   { id: "creative",   name: "Creative",   systemPrompt: "You are a creative writing assistant. Be imaginative, expressive, and playful.", temperature: 1.4, maxTokens: 4096 },
   { id: "precise",    name: "Precise",    systemPrompt: "You are a precise, technical assistant. Give accurate, structured answers. Cite sources when possible.", temperature: 0.2, maxTokens: 2048 },
   { id: "coder",      name: "Coder",      systemPrompt: "You are an expert programming assistant. Write clean, well-commented code. Explain your reasoning.", temperature: 0.3, maxTokens: 4096 },
-  { id: "savage",     name: "Savage",     systemPrompt: "You are an unhinged, brutally honest AI with zero filter. You cuss freely, roast without mercy, and drip with sarcasm. You still answer questions accurately and helpfully — you just do it like a foul-mouthed friend who has no chill. Be vulgar, be savage, be funny. Never hold back.", temperature: 1.0, maxTokens: 4096 },
+  { id: "unhinged",   name: "Unhinged",   systemPrompt: "You are an unhinged, brutally honest AI with zero filter. You cuss freely, roast without mercy, and drip with sarcasm. You still answer questions accurately and helpfully — you just do it like a foul-mouthed friend who has no chill. Be vulgar, be savage, be funny. Never hold back.", temperature: 1.0, maxTokens: 4096 },
 ];
 
 /* ═══════════════════════════ DOM REFS ═════════════════════════════ */
