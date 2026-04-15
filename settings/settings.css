@@ -798,9 +798,7 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
   margin-top: 12px;
 }
 
-#profile-select {
-  appearance: auto;
-}
+/* profile-select inherits the custom select styling from the shared rule */
 
 /* ─── Select styling ────────────────────────── */
 select {

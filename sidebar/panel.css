@@ -486,6 +486,17 @@ textarea, input, select {
   border-top: 1px solid var(--border);
   margin: 8px 0;
 }
+.msg-bubble blockquote {
+  border-left: 3px solid var(--border2);
+  padding-left: 10px;
+  margin: 6px 0;
+  color: var(--text2);
+}
+.msg-bubble a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 .msg-actions {
   display: none;

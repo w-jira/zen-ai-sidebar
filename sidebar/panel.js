@@ -241,6 +241,8 @@ function handleTabInfo(tab) {
 }
 
 /* ═══════════════════════════ AUTO-SUMMARY ══════════════════════════ */
+let autoSummaryCtrl = null;  // track auto-summary so it can be cancelled
+
 function triggerAutoSummary() {
   dom.autoSummaryCard.style.display = 'block';
   dom.autoSummaryContent.textContent = 'Summarizing page…';
@@ -251,8 +253,9 @@ function triggerAutoSummary() {
       return;
     }
     try {
-      // Use a separate AbortController so it doesn't collide with user messages
-      const ctrl = new AbortController();
+      // Cancel any previous auto-summary in flight
+      if (autoSummaryCtrl) autoSummaryCtrl.abort();
+      autoSummaryCtrl = new AbortController();
       const resp = await fetch(getApiEndpoint(false), {
         method: 'POST',
         headers: getApiHeaders(),
@@ -260,7 +263,7 @@ function triggerAutoSummary() {
           { role: 'system', content: buildSystemPrompt() },
           { role: 'user', content: 'Please give me a brief 2-3 sentence summary of this page.' },
         ], false)),
-        signal: ctrl.signal,
+        signal: autoSummaryCtrl.signal,
       });
       if (!resp.ok) throw new Error('API error');
       const data = await resp.json();
@@ -271,7 +274,9 @@ function triggerAutoSummary() {
       else summary = data.choices?.[0]?.message?.content || '';
       dom.autoSummaryContent.textContent = summary || 'Could not summarize this page.';
     } catch (e) {
-      dom.autoSummaryCard.style.display = 'none';
+      if (e.name !== 'AbortError') dom.autoSummaryCard.style.display = 'none';
+    } finally {
+      autoSummaryCtrl = null;
     }
   }, 800);
 }
@@ -633,6 +638,10 @@ async function sendMessage(content) {
   updateSendButton();
   updateTokenCounter();
 
+  // Cancel any auto-summary in flight
+  if (autoSummaryCtrl) { autoSummaryCtrl.abort(); autoSummaryCtrl = null; }
+  dom.autoSummaryCard.style.display = 'none';
+
   // Check if model needs a custom endpoint
   if (!state.endpoint && needsCustomEndpoint(state.model)) {
     showError(`${modelLabel(state.model)} requires a custom endpoint (e.g. OpenRouter). Set one in Settings.`);
@@ -923,24 +932,32 @@ function buildApiBody(history, stream) {
 }
 
 // Parse SSE delta — handles OpenAI, Anthropic, and Gemini streaming formats
+// Returns: string (delta text), null ([DONE]), or throws on provider error
 function parseDelta(line, provider) {
   const data = line.slice(6).trim();
   if (data === '[DONE]') return null;
   try {
     const json = JSON.parse(data);
     if (provider === 'anthropic') {
-      // Anthropic error events surface as {type:'error', error:{message:'...'}}
-      if (json.type === 'error') throw new Error(json.error?.message || 'Anthropic streaming error');
+      // Anthropic error events must propagate to caller
+      if (json.type === 'error') {
+        const err = new Error(json.error?.message || 'Anthropic streaming error');
+        err.isProviderError = true;
+        throw err;
+      }
       // Anthropic: {type:'content_block_delta', delta:{type:'text_delta', text:'...'}}
       return json.delta?.text || json.delta?.content || '';
     }
     if (provider === 'gemini') {
-      // Gemini: {candidates:[{content:{parts:[{text:'...'}]}}]}
       return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
     // OpenAI-compat
     return json.choices?.[0]?.delta?.content || '';
-  } catch { return ''; }
+  } catch (e) {
+    // Re-throw provider errors so they surface to the user
+    if (e.isProviderError) throw e;
+    return '';
+  }
 }
 
 async function regenerateLastResponse() {

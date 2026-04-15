@@ -34,8 +34,11 @@ const MODEL_LIST = [
   { id: "gemini-3.1-flash",  name: "Gemini 3.1 Flash",    group: "Google" },
   { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite", group: "Google" },
   { id: "gemini-2.5-pro",    name: "Gemini 2.5 Pro",      group: "Google" },
+  { id: "google/gemma-4-27b-it", name: "Gemma 4 27B",        group: "Google" },
+  { id: "google/gemma-4-4b-it",  name: "Gemma 4 4B",         group: "Google" },
   { id: "meta-llama/llama-4-maverick", name: "Llama 4 Maverick", group: "Meta" },
   { id: "meta-llama/llama-4-scout", name: "Llama 4 Scout", group: "Meta" },
+  { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B", group: "Meta" },
   { id: "grok-4.20",         name: "Grok 4.20",           group: "xAI" },
   { id: "grok-4.1-fast",     name: "Grok 4.1 Fast",       group: "xAI" },
   { id: "deepseek/deepseek-r1", name: "DeepSeek R1",      group: "DeepSeek" },
@@ -109,6 +112,7 @@ function buildModelSelect(selectedId) {
   dom.model.textContent = "";
   let lastGroup = "";
   let optgroup;
+  let found = false;
   MODEL_LIST.forEach((m) => {
     if (m.group !== lastGroup) {
       optgroup = document.createElement("optgroup");
@@ -119,9 +123,20 @@ function buildModelSelect(selectedId) {
     const opt = document.createElement("option");
     opt.value = m.id;
     opt.textContent = m.name;
-    if (m.id === selectedId) opt.selected = true;
+    if (m.id === selectedId) { opt.selected = true; found = true; }
     optgroup.appendChild(opt);
   });
+  // If stored model isn't in the list (custom model), add it so it stays selected
+  if (!found && selectedId) {
+    const customGroup = document.createElement("optgroup");
+    customGroup.label = "Custom";
+    const opt = document.createElement("option");
+    opt.value = selectedId;
+    opt.textContent = selectedId;
+    opt.selected = true;
+    customGroup.appendChild(opt);
+    dom.model.appendChild(customGroup);
+  }
 }
 
 // Auto-save model change to storage immediately (no Save button needed)
@@ -224,7 +239,9 @@ dom.settingsForm.addEventListener("submit", async (e) => {
 ["endpoint", "apiKey", "anthropicKey", "geminiKey"].forEach((field) => {
   dom[field].addEventListener("change", async () => {
     const obj = {};
-    obj[field === "endpoint" ? "endpoint" : field] = dom[field].value.trim();
+    let val = dom[field].value.trim();
+    if (field === "endpoint") val = val.replace(/\/+$/, "");
+    obj[field] = val;
     await browser.storage.local.set(obj);
   });
 });
@@ -341,7 +358,7 @@ let profiles = [];
 let activeProfileId = "default";
 
 function loadProfiles(stored, activeId) {
-  profiles = stored && stored.length > 0 ? stored : [...DEFAULT_PROFILES];
+  profiles = Array.isArray(stored) && stored.length > 0 ? stored : [...DEFAULT_PROFILES];
   activeProfileId = activeId || "default";
   renderProfileSelect();
   applyProfile(activeProfileId);
@@ -370,10 +387,18 @@ function applyProfile(id) {
   dom.btnDeleteProfile.style.display = DEFAULT_PROFILES.some((d) => d.id === id) ? "none" : "inline";
 }
 
-dom.profileSelect.addEventListener("change", () => {
+dom.profileSelect.addEventListener("change", async () => {
   activeProfileId = dom.profileSelect.value;
   applyProfile(activeProfileId);
-  browser.storage.local.set({ activeProfile: activeProfileId });
+  const p = profiles.find((pr) => pr.id === activeProfileId);
+  // Save both the profile selection AND its values so sidebar picks them up immediately
+  await browser.storage.local.set({
+    activeProfile: activeProfileId,
+    systemPrompt: p ? p.systemPrompt : DEFAULT_SYSTEM_PROMPT,
+    temperature: p ? p.temperature : 0.7,
+    maxTokens: p ? p.maxTokens : 2048,
+  });
+  showStatus(dom.saveStatus, "Profile applied", "ok");
 });
 
 dom.btnSaveProfile.addEventListener("click", async () => {
@@ -419,13 +444,14 @@ function syncThemeButtons(theme) {
   });
 }
 
-dom.themeGroup.addEventListener("click", (e) => {
+dom.themeGroup.addEventListener("click", async (e) => {
   const btn = e.target.closest(".toggle-btn");
   if (!btn) return;
   const value = btn.dataset.value;
   dom.themeSelect.value = value;
   applyTheme(value);
   syncThemeButtons(value);
+  await browser.storage.local.set({ theme: value });
 });
 
 /* ═══════════════════════════ FONT SIZE ═════════════════════════════ */
