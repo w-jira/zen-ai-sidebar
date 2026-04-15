@@ -23,6 +23,9 @@ const state = {
   fontSize: 'm',
   responseLength: 'concise',
   pinned: false,
+  systemPrompt: '',
+  maxTokens: 0,
+  temperature: -1,        // -1 = not set (omit from request)
   templates: [
     { id: 't1', name: 'Code review', prompt: 'Review this code for bugs, performance issues, and best practices:' },
     { id: 't2', name: 'Email draft', prompt: 'Draft a professional email about:' },
@@ -101,6 +104,7 @@ async function init() {
   await loadStorage();
   applyTheme();
   applyFontSize();
+  buildModelMenu();
   renderHistory();
   renderTemplates();
   updateFooterPills();
@@ -121,11 +125,20 @@ async function init() {
 }
 
 /* ═══════════════════════════ STORAGE ══════════════════════════════ */
+// Normalize fontSize values — settings page uses "small"/"medium"/"large",
+// sidebar uses "s"/"m"/"l". Accept both, store canonical short form.
+function normalizeFontSize(val) {
+  if (!val) return 'm';
+  const map = { small: 's', medium: 'm', large: 'l', s: 's', m: 'm', l: 'l' };
+  return map[val] || 'm';
+}
+
 async function loadStorage() {
   try {
     const data = await browser.storage.local.get([
       'apiKey', 'endpoint', 'model', 'theme', 'chatHistory', 'siteModels',
       'singleTurn', 'streamingEnabled', 'fontSize', 'responseLength', 'templates',
+      'systemPrompt', 'maxTokens', 'temperature',
     ]);
     if (data.apiKey)          state.apiKey          = data.apiKey;
     if (data.endpoint)        state.endpoint        = data.endpoint;
@@ -135,9 +148,12 @@ async function loadStorage() {
     if (data.siteModels)      state.siteModels      = data.siteModels;
     if (data.singleTurn !== undefined) state.singleTurn = data.singleTurn;
     if (data.streamingEnabled !== undefined) state.streamingEnabled = data.streamingEnabled;
-    if (data.fontSize)        state.fontSize        = data.fontSize;
+    if (data.fontSize)        state.fontSize        = normalizeFontSize(data.fontSize);
     if (data.responseLength)  state.responseLength  = data.responseLength;
     if (data.templates)       state.templates       = data.templates;
+    if (data.systemPrompt)    state.systemPrompt    = data.systemPrompt;
+    if (data.maxTokens)       state.maxTokens       = data.maxTokens;
+    if (data.temperature !== undefined && data.temperature >= 0) state.temperature = data.temperature;
     dom.modelName.textContent = modelLabel(state.model);
   } catch (e) { console.warn('Storage load failed', e); }
 }
@@ -225,17 +241,34 @@ function triggerAutoSummary() {
   dom.autoSummaryCard.style.display = 'block';
   dom.autoSummaryContent.textContent = 'Summarizing page…';
 
-  // Simulate summary generation
   setTimeout(async () => {
-    if (state.messages.length > 0) {
+    if (state.messages.length > 0 || state.generating) {
       dom.autoSummaryCard.style.display = 'none';
       return;
     }
-    const summary = await callAI([
-      { role: 'system', content: buildSystemPrompt() },
-      { role: 'user', content: 'Please give me a brief 2-3 sentence summary of this page.' },
-    ], false /* no streaming for summary */);
-    dom.autoSummaryContent.textContent = summary || 'Could not summarize this page.';
+    try {
+      // Use a separate AbortController so it doesn't collide with user messages
+      const ctrl = new AbortController();
+      const resp = await fetch(getApiEndpoint(false), {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify(buildApiBody([
+          { role: 'system', content: buildSystemPrompt() },
+          { role: 'user', content: 'Please give me a brief 2-3 sentence summary of this page.' },
+        ], false)),
+        signal: ctrl.signal,
+      });
+      if (!resp.ok) throw new Error('API error');
+      const data = await resp.json();
+      const provider = providerOf(state.model);
+      let summary;
+      if (provider === 'anthropic') summary = data.content?.[0]?.text || '';
+      else if (provider === 'gemini') summary = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      else summary = data.choices?.[0]?.message?.content || '';
+      dom.autoSummaryContent.textContent = summary || 'Could not summarize this page.';
+    } catch (e) {
+      dom.autoSummaryCard.style.display = 'none';
+    }
   }, 800);
 }
 
@@ -248,6 +281,8 @@ const MODEL_LIST = [
   {id:'gpt-5.3',                          name:'GPT-5.3 Instant',      group:'OpenAI'},
   {id:'o3',                               name:'o3',                   group:'OpenAI'},
   {id:'o4-mini',                          name:'o4-mini',              group:'OpenAI'},
+  {id:'gpt-4o',                           name:'GPT-4o',               group:'OpenAI'},
+  {id:'gpt-4o-mini',                      name:'GPT-4o mini',          group:'OpenAI'},
   // Anthropic
   {id:'claude-opus-4-6',                  name:'Claude Opus 4.6',      group:'Anthropic'},
   {id:'claude-sonnet-4-6',               name:'Claude Sonnet 4.6',    group:'Anthropic'},
@@ -292,10 +327,73 @@ function setModel(id) {
   saveStorage({ model: id });
 }
 
+// Build the model dropdown menu dynamically from MODEL_LIST
+function buildModelMenu() {
+  dom.modelMenu.textContent = '';
+  let lastGroup = '';
+  MODEL_LIST.forEach(m => {
+    if (m.group !== lastGroup) {
+      if (lastGroup) {
+        const divider = document.createElement('div');
+        divider.className = 'menu-divider';
+        dom.modelMenu.appendChild(divider);
+      }
+      const label = document.createElement('div');
+      label.className = 'menu-section-label';
+      label.textContent = m.group;
+      dom.modelMenu.appendChild(label);
+      lastGroup = m.group;
+    }
+    const btn = document.createElement('button');
+    btn.className = 'menu-item model-item' + (m.id === state.model ? ' active' : '');
+    btn.dataset.model = m.id;
+    btn.setAttribute('role', 'menuitem');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'menu-item-name';
+    nameSpan.textContent = m.name;
+    btn.appendChild(nameSpan);
+    dom.modelMenu.appendChild(btn);
+  });
+}
+
+// Listen for storage changes from settings page
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+  if (changes.apiKey)          state.apiKey          = changes.apiKey.newValue || '';
+  if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
+  if (changes.model) {
+    state.model = changes.model.newValue || 'gpt-4o';
+    dom.modelName.textContent = modelLabel(state.model);
+    buildModelMenu();
+  }
+  if (changes.theme) {
+    state.theme = changes.theme.newValue || 'dark';
+    applyTheme();
+  }
+  if (changes.fontSize) {
+    state.fontSize = normalizeFontSize(changes.fontSize.newValue);
+    applyFontSize();
+  }
+  if (changes.systemPrompt)    state.systemPrompt    = changes.systemPrompt.newValue || '';
+  if (changes.maxTokens)       state.maxTokens       = changes.maxTokens.newValue || 0;
+  if (changes.temperature !== undefined) {
+    const t = changes.temperature.newValue;
+    state.temperature = (t !== undefined && t >= 0) ? t : -1;
+  }
+});
+
 /* ═══════════════════════════ THEME ════════════════════════════════ */
+function resolveTheme(theme) {
+  if (theme === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return theme;
+}
+
 function applyTheme() {
-  document.documentElement.setAttribute('data-theme', state.theme);
-  const isDark = state.theme === 'dark';
+  const resolved = resolveTheme(state.theme);
+  document.documentElement.setAttribute('data-theme', resolved);
+  const isDark = resolved === 'dark';
   dom.themeIconMoon.style.display = isDark ? 'none' : 'block';
   dom.themeIconSun.style.display  = isDark ? 'block' : 'none';
 }
@@ -368,7 +466,9 @@ function clearMessages() {
 }
 
 function buildSystemPrompt() {
-  let sys = 'You are Zen AI, a helpful browser sidebar assistant. ';
+  let sys = state.systemPrompt
+    ? state.systemPrompt + ' '
+    : 'You are Zen AI, a helpful browser sidebar assistant. ';
   if (state.pageCtx.content) {
     sys += `The user is viewing: "${state.pageCtx.title}" (${state.pageCtx.url})\n\nPage content:\n${state.pageCtx.content.slice(0, 8000)}\n\n`;
   }
@@ -481,10 +581,12 @@ function renderMarkdown(text) {
   text = text.replace(/\*\*([^*]+)\*\*/g,     '<strong>$1</strong>');
   text = text.replace(/\*([^*\n]+)\*/g,        '<em>$1</em>');
   // Unordered lists
-  text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
-  text = text.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  text = text.replace(/^[-*] (.+)$/gm, '<li class="ul">$1</li>');
   // Ordered lists
-  text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/^\d+\. (.+)$/gm, '<li class="ol">$1</li>');
+  // Wrap consecutive list items in <ul> or <ol>
+  text = text.replace(/(<li class="ul">.*?<\/li>\n?)+/g, m => `<ul>${m.replace(/ class="ul"/g, '')}</ul>`);
+  text = text.replace(/(<li class="ol">.*?<\/li>\n?)+/g, m => `<ol>${m.replace(/ class="ol"/g, '')}</ol>`);
   // Horizontal rule
   text = text.replace(/^---+$/gm, '<hr>');
   // Paragraphs — split on double newline
@@ -492,7 +594,7 @@ function renderMarkdown(text) {
   text = parts.map(p => {
     p = p.trim();
     if (!p) return '';
-    if (/^<(h[1-3]|ul|ol|li|hr|pre|blockquote)/.test(p)) return p;
+    if (/^<(h[1-3]|ul|ol|li|hr|pre|blockquote|div)/.test(p)) return p;
     return `<p>${p.replace(/\n/g, '<br>')}</p>`;
   }).join('\n');
 
@@ -524,6 +626,12 @@ async function sendMessage(content) {
   dom.chatInput.style.height = 'auto';
   updateSendButton();
   updateTokenCounter();
+
+  // Check if model needs a custom endpoint
+  if (!state.endpoint && needsCustomEndpoint(state.model)) {
+    showError(`${modelLabel(state.model)} requires a custom endpoint (e.g. OpenRouter). Set one in Settings.`);
+    return;
+  }
 
   setGenerating(true);
   showError(null);
@@ -592,7 +700,7 @@ async function streamResponse(history, typingEl) {
   state.abortController = new AbortController();
   let fullText = '';
 
-  const resp = await fetch(getApiEndpoint(), {
+  const resp = await fetch(getApiEndpoint(true), {
     method: 'POST',
     headers: getApiHeaders(),
     body: JSON.stringify(buildApiBody(history, true)),
@@ -606,25 +714,42 @@ async function streamResponse(history, typingEl) {
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
+  const provider = providerOf(state.model);
+  let lineBuf = '';   // buffer for partial SSE lines
 
+  function updateStreamUI() {
+    cursor.remove();
+    bubbleEl.textContent = '';
+    const rendered = renderMarkdown(fullText);
+    bubbleEl.insertAdjacentHTML('beforeend', rendered);
+    bubbleEl.appendChild(cursor);
+    scrollToBottom();
+  }
+
+  // SSE-based streaming (OpenAI, Anthropic, Gemini with alt=sse, OpenAI-compat)
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
+    lineBuf += decoder.decode(value, { stream: true });
+    const lines = lineBuf.split('\n');
+    lineBuf = lines.pop() || '';  // keep incomplete last line in buffer
 
-    for (const line of lines) {
-      const delta = parseDelta(line, providerOf(state.model));
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line.startsWith('data: ')) continue;
+      const delta = parseDelta(line, provider);
       if (delta === null) continue; // [DONE]
       if (delta) {
         fullText += delta;
-        cursor.remove();
-        bubbleEl.innerHTML = renderMarkdown(fullText);
-        bubbleEl.appendChild(cursor);
-        scrollToBottom();
+        updateStreamUI();
       }
     }
+  }
+  // Process any remaining buffered data
+  if (lineBuf.trim().startsWith('data: ')) {
+    const delta = parseDelta(lineBuf.trim(), provider);
+    if (delta && delta !== null) fullText += delta;
   }
 
   cursor.remove();
@@ -664,7 +789,7 @@ async function streamResponse(history, typingEl) {
 
 async function callAI(history, streaming = false) {
   state.abortController = new AbortController();
-  const resp = await fetch(getApiEndpoint(), {
+  const resp = await fetch(getApiEndpoint(streaming), {
     method: 'POST',
     headers: getApiHeaders(),
     body: JSON.stringify(buildApiBody(history, streaming)),
@@ -694,10 +819,21 @@ function providerOf(model) {
   if (model.startsWith('claude'))    return 'anthropic';
   if (model.startsWith('gemini'))    return 'gemini';
   if (model.startsWith('grok'))      return 'openai-compat'; // xAI uses OpenAI-compat
-  return 'openai'; // OpenAI, Meta, DeepSeek, Mistral all via OpenAI-compat
+  // Meta, DeepSeek, Mistral etc. need a custom endpoint (e.g. OpenRouter)
+  // but default to OpenAI-compat format so they work with any proxy
+  return 'openai';
 }
 
-function getApiEndpoint() {
+// Models that require a proxy/custom endpoint (not available via direct API)
+function needsCustomEndpoint(model) {
+  if (!model) return false;
+  return model.includes('/') || // namespaced (meta-llama/, deepseek/, google/)
+    model.startsWith('grok') ||
+    model.startsWith('mistral') ||
+    model.startsWith('codestral');
+}
+
+function getApiEndpoint(streaming = false) {
   // Custom endpoint always wins
   if (state.endpoint) {
     const base = state.endpoint.replace(/\/$/, '');
@@ -705,7 +841,11 @@ function getApiEndpoint() {
   }
   const provider = providerOf(state.model);
   if (provider === 'anthropic') return 'https://api.anthropic.com/v1/messages';
-  if (provider === 'gemini')    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:streamGenerateContent?key=${state.apiKey}`;
+  if (provider === 'gemini') {
+    const method = streaming ? 'streamGenerateContent' : 'generateContent';
+    const sseParam = streaming ? '&alt=sse' : '';
+    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:${method}?key=${state.apiKey}${sseParam}`;
+  }
   return 'https://api.openai.com/v1/chat/completions';
 }
 
@@ -716,6 +856,7 @@ function getApiHeaders() {
       'Content-Type': 'application/json',
       'x-api-key': state.apiKey,
       'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
     };
   }
   if (provider === 'gemini') {
@@ -732,50 +873,63 @@ const MAX_TOKENS_CONCISE  = 1024;
 const MAX_TOKENS_DETAILED = 4096;
 
 function buildApiBody(history, stream) {
-  const maxTok = state.responseLength === 'detailed' ? MAX_TOKENS_DETAILED : MAX_TOKENS_CONCISE;
+  const maxTok = state.maxTokens > 0
+    ? state.maxTokens
+    : (state.responseLength === 'detailed' ? MAX_TOKENS_DETAILED : MAX_TOKENS_CONCISE);
   const provider = providerOf(state.model);
 
   if (provider === 'anthropic') {
     const sys  = history.find(m => m.role === 'system');
     const msgs = history.filter(m => m.role !== 'system');
-    return {
-      model: state.model,   // use exact model ID as-is
+    const body = {
+      model: state.model,
       system: sys ? sys.content : 'You are Zen AI, a helpful browser sidebar assistant.',
       messages: msgs,
       stream,
       max_tokens: maxTok,
     };
+    if (state.temperature >= 0) body.temperature = state.temperature;
+    return body;
   }
 
   if (provider === 'gemini') {
-    // Gemini uses a different body format
     const contents = history
       .filter(m => m.role !== 'system')
       .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
     const sys = history.find(m => m.role === 'system');
-    const body = { contents, generationConfig: { maxOutputTokens: maxTok } };
+    const genConfig = { maxOutputTokens: maxTok };
+    if (state.temperature >= 0) genConfig.temperature = state.temperature;
+    const body = { contents, generationConfig: genConfig };
     if (sys) body.systemInstruction = { parts: [{ text: sys.content }] };
     return body;
   }
 
   // OpenAI-compatible (OpenAI, xAI, Meta via OpenRouter, DeepSeek, Mistral, custom VPS)
-  return {
+  const body = {
     model: state.model,
     messages: history,
     stream,
     max_tokens: maxTok,
   };
+  if (state.temperature >= 0) body.temperature = state.temperature;
+  return body;
 }
 
-// Parse SSE delta — handles OpenAI and Anthropic streaming formats
+// Parse SSE delta — handles OpenAI, Anthropic, and Gemini streaming formats
 function parseDelta(line, provider) {
   const data = line.slice(6).trim();
   if (data === '[DONE]') return null;
   try {
     const json = JSON.parse(data);
     if (provider === 'anthropic') {
+      // Anthropic error events surface as {type:'error', error:{message:'...'}}
+      if (json.type === 'error') throw new Error(json.error?.message || 'Anthropic streaming error');
       // Anthropic: {type:'content_block_delta', delta:{type:'text_delta', text:'...'}}
       return json.delta?.text || json.delta?.content || '';
+    }
+    if (provider === 'gemini') {
+      // Gemini: {candidates:[{content:{parts:[{text:'...'}]}}]}
+      return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
     // OpenAI-compat
     return json.choices?.[0]?.delta?.content || '';
@@ -788,16 +942,15 @@ async function regenerateLastResponse() {
   if (lastAiIdx === -1) return;
   state.messages.splice(state.messages.length - 1 - lastAiIdx, 1);
   // Remove from DOM
-  const aiMsgs = dom.messages.querySelectorAll('.msg.ai');
+  const aiMsgs = dom.messages.querySelectorAll('.msg.assistant');
   if (aiMsgs.length > 0) aiMsgs[aiMsgs.length - 1].remove();
   // Re-send
   const userMsgs = state.messages.filter(m => m.role === 'user');
   if (!userMsgs.length) return;
-  const lastUser = userMsgs[userMsgs.length - 1].content;
   // Re-run with existing history (already has the user message)
   setGenerating(true);
   const typingEl = document.createElement('div');
-  typingEl.className = 'msg ai';
+  typingEl.className = 'msg assistant';
   typingEl.innerHTML = `<div class="msg-avatar">Z</div><div class="typing-dots"><span></span><span></span><span></span></div>`;
   dom.messages.appendChild(typingEl);
   scrollToBottom();
@@ -1041,15 +1194,17 @@ function positionSlashPalette() {
   dom.slashPalette.style.bottom = (appRect.bottom - iwRect.top + 4) + 'px';
 }
 
+function getVisibleSlashItems() {
+  return [...dom.slashList.querySelectorAll('.slash-item')].filter(el => el.style.display !== 'none');
+}
+
 function updateSlashFocus() {
-  const items = [...dom.slashPalette.querySelectorAll('.slash-item:not([style*="display: none"])'),
-                  ...dom.slashPalette.querySelectorAll('.slash-item:not([style*="display:none"])')];
+  const items = getVisibleSlashItems();
   items.forEach((el, i) => el.classList.toggle('focused', i === state.slashIdx));
 }
 
 function navigateSlash(dir) {
-  const items = [...dom.slashList.querySelectorAll('.slash-item')]
-    .filter(el => el.style.display !== 'none');
+  const items = getVisibleSlashItems();
   if (!items.length) return;
   state.slashIdx = (state.slashIdx + dir + items.length) % items.length;
   updateSlashFocus();
@@ -1156,10 +1311,14 @@ dom.actionScreenshot.addEventListener('click', async () => {
   closeAllDropdowns();
   try {
     const dataUrl = await browser.tabs.captureVisibleTab(null, { format: 'png' });
-    // Could send to AI or download
-    showToast('Screenshot captured', 2000);
+    // Download the screenshot
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `screenshot-${Date.now()}.png`;
+    a.click();
+    showToast('Screenshot saved', 2000);
   } catch (e) {
-    showToast('Screenshot failed', 2000);
+    showToast('Screenshot failed — check permissions', 2000);
   }
 });
 

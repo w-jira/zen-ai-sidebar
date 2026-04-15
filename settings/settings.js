@@ -31,8 +31,14 @@ async function loadSettings() {
   fields.model.value        = stored.model        || "gpt-4o";
   fields.systemPrompt.value = stored.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   fields.maxTokens.value    = stored.maxTokens    || 2048;
-  fields.temperature.value  = stored.temperature  || 0.7;
+  fields.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
   elTempVal.textContent     = fields.temperature.value;
+
+  // Hide onboarding if already configured
+  if (stored.apiKey) {
+    const card = document.getElementById("onboarding-card");
+    if (card) card.style.display = "none";
+  }
 
   const theme = stored.theme || "dark";
   elTheme.value = theme;
@@ -66,8 +72,9 @@ elBtnTest.addEventListener("click", async () => {
   const apiKey   = fields.apiKey.value.trim();
   const model    = fields.model.value.trim();
 
-  if (!endpoint || !apiKey) {
-    showStatus(elTestResult, "Fill in endpoint and key first", "err");
+  const isLocalEndpoint = endpoint.startsWith("http://localhost") || endpoint.startsWith("http://127.0.0.1");
+  if (!apiKey && !isLocalEndpoint) {
+    showStatus(elTestResult, "Enter an API key first", "err");
     return;
   }
 
@@ -75,23 +82,61 @@ elBtnTest.addEventListener("click", async () => {
   showStatus(elTestResult, "Testing…", "");
 
   try {
-    const res = await fetch(`${endpoint}/chat/completions`, {
-      method: "POST",
-      headers: {
+    // Detect provider from endpoint or model to use correct format
+    const isAnthropic = endpoint.includes("anthropic.com") || (model && model.startsWith("claude"));
+    const isGemini = endpoint.includes("generativelanguage.googleapis.com") || (model && model.startsWith("gemini"));
+
+    let url, headers, body;
+
+    if (!endpoint && isAnthropic) {
+      // Direct Anthropic API (no custom endpoint)
+      url = "https://api.anthropic.com/v1/messages";
+      headers = {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      };
+      body = JSON.stringify({
+        model: model || "claude-sonnet-4-6",
+        messages: [{ role: "user", content: "Reply with: OK" }],
+        max_tokens: 10
+      });
+    } else if (!endpoint && isGemini) {
+      // Direct Gemini API (no custom endpoint)
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${model || "gemini-3.1-flash"}:generateContent?key=${apiKey}`;
+      headers = { "Content-Type": "application/json" };
+      body = JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: "Reply with: OK" }] }],
+        generationConfig: { maxOutputTokens: 10 }
+      });
+    } else {
+      // OpenAI-compatible (default)
+      const base = endpoint || "https://api.openai.com/v1";
+      url = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
+      headers = { "Content-Type": "application/json" };
+      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      body = JSON.stringify({
         model: model || "gpt-4o",
         messages: [{ role: "user", content: "Reply with: OK" }],
         max_tokens: 10,
         stream: false
-      })
-    });
+      });
+    }
+
+    const res = await fetch(url, { method: "POST", headers, body });
 
     if (res.ok) {
       const data = await res.json();
-      const reply = data.choices?.[0]?.message?.content?.trim() || "(no content)";
+      let reply;
+      // Only use native response parsing when we actually used the native API
+      if (!endpoint && isAnthropic) {
+        reply = data.content?.[0]?.text?.trim() || "(no content)";
+      } else if (!endpoint && isGemini) {
+        reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(no content)";
+      } else {
+        reply = data.choices?.[0]?.message?.content?.trim() || "(no content)";
+      }
       showStatus(elTestResult, `✓ Connected — "${reply}"`, "ok");
     } else {
       const txt = await res.text();

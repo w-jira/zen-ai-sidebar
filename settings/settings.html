@@ -155,13 +155,13 @@
 
           <div class="quick-add-row">
             <span class="quick-add-label">Quick add:</span>
-            <div class="chip-list">
-              <button type="button" class="chip" onclick="quickAdd('gpt-4o','GPT-4o')">gpt-4o</button>
-              <button type="button" class="chip" onclick="quickAdd('gpt-4o-mini','GPT-4o Mini')">gpt-4o-mini</button>
-              <button type="button" class="chip" onclick="quickAdd('claude-3-5-sonnet-20241022','Claude 3.5 Sonnet')">claude-3.5-sonnet</button>
-              <button type="button" class="chip" onclick="quickAdd('claude-3-haiku-20240307','Claude 3 Haiku')">claude-3-haiku</button>
-              <button type="button" class="chip" onclick="quickAdd('llama3','Llama 3')">llama3</button>
-              <button type="button" class="chip" onclick="quickAdd('mistral','Mistral')">mistral</button>
+            <div class="chip-list" id="quick-add-chips">
+              <button type="button" class="chip" data-id="gpt-5.4" data-label="GPT-5.4">gpt-5.4</button>
+              <button type="button" class="chip" data-id="gpt-5.4-mini" data-label="GPT-5.4 mini">gpt-5.4-mini</button>
+              <button type="button" class="chip" data-id="claude-sonnet-4-6" data-label="Claude Sonnet 4.6">claude-sonnet-4.6</button>
+              <button type="button" class="chip" data-id="claude-haiku-4-5" data-label="Claude Haiku 4.5">claude-haiku-4.5</button>
+              <button type="button" class="chip" data-id="gemini-3.1-flash" data-label="Gemini 3.1 Flash">gemini-3.1-flash</button>
+              <button type="button" class="chip" data-id="meta-llama/llama-4-maverick" data-label="Llama 4 Maverick">llama-4-maverick</button>
             </div>
           </div>
         </div>
@@ -238,9 +238,9 @@
           <div class="toggle-group-row">
             <label class="toggle-group-label">Size</label>
             <div class="toggle-group" id="font-size-toggle-group">
-              <button type="button" class="toggle-btn" data-value="small">S</button>
-              <button type="button" class="toggle-btn active" data-value="medium">M</button>
-              <button type="button" class="toggle-btn" data-value="large">L</button>
+              <button type="button" class="toggle-btn" data-value="s">S</button>
+              <button type="button" class="toggle-btn active" data-value="m">M</button>
+              <button type="button" class="toggle-btn" data-value="l">L</button>
             </div>
           </div>
         </div>
@@ -313,15 +313,15 @@
       btn.addEventListener('click', () => syncTheme(btn.dataset.value));
     });
 
-    // Keep in sync when settings.js loads the stored theme
-    const observer = new MutationObserver(() => {
-      btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
-    });
-    observer.observe(themeSelect, { attributes: true, childList: true, subtree: true });
-
     themeSelect.addEventListener('change', () => {
       btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
     });
+
+    // Sync toggle buttons after settings.js loads — poll once since programmatic
+    // .value assignment doesn't fire change events or trigger MutationObserver
+    setTimeout(() => {
+      btns.forEach(b => b.classList.toggle('active', b.dataset.value === themeSelect.value));
+    }, 50);
   })();
 
   // ─── Font size toggles ────────────────────────────────────────────────────────
@@ -331,7 +331,10 @@
 
     async function loadFontSize() {
       const s = await browser.storage.local.get('fontSize');
-      const size = s.fontSize || 'medium';
+      const raw = s.fontSize || 'm';
+      // Normalize: accept both short ("s"/"m"/"l") and long ("small"/"medium"/"large")
+      const map = { small: 's', medium: 'm', large: 'l', s: 's', m: 'm', l: 'l' };
+      const size = map[raw] || 'm';
       btns.forEach(b => b.classList.toggle('active', b.dataset.value === size));
     }
 
@@ -347,6 +350,10 @@
   })();
 
   // ─── Model management ─────────────────────────────────────────────────────────
+  function escapeSettingsHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   async function loadModels() {
     const s = await browser.storage.local.get(['models', 'activeModel']);
     const models = s.models || [];
@@ -357,7 +364,7 @@
   function renderModelList(models, active) {
     const list = document.getElementById('model-list');
     const empty = document.getElementById('model-empty');
-    list.innerHTML = '';
+    list.textContent = '';
 
     if (models.length === 0) {
       empty.style.display = 'flex';
@@ -368,31 +375,58 @@
     models.forEach((m, i) => {
       const row = document.createElement('div');
       row.className = 'model-row' + (m.id === active ? ' active' : '');
-      row.innerHTML = `
-        <span class="model-active-dot" title="${m.id === active ? 'Active model' : 'Not active'}"></span>
-        <span class="model-label">${m.label}</span>
-        <span class="model-id">${m.id}</span>
-        <div class="model-actions">
-          ${m.id !== active
-            ? `<button class="btn-ghost btn-sm" onclick="setActive('${m.id.replace(/'/g,"\\'")}')" type="button">Set default</button>`
-            : '<span class="tag-active">Default</span>'
-          }
-          <button class="btn-icon btn-danger" onclick="deleteModel(${i})" title="Delete" type="button">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14H6L5 6"/>
-              <path d="M10 11v6M14 11v6"/>
-            </svg>
-          </button>
-        </div>
-      `;
+
+      const dot = document.createElement('span');
+      dot.className = 'model-active-dot';
+      dot.title = m.id === active ? 'Active model' : 'Not active';
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'model-label';
+      labelSpan.textContent = m.label;
+
+      const idSpan = document.createElement('span');
+      idSpan.className = 'model-id';
+      idSpan.textContent = m.id;
+
+      const actions = document.createElement('div');
+      actions.className = 'model-actions';
+
+      if (m.id !== active) {
+        const setBtn = document.createElement('button');
+        setBtn.className = 'btn-ghost btn-sm';
+        setBtn.type = 'button';
+        setBtn.textContent = 'Set default';
+        setBtn.addEventListener('click', () => setActive(m.id));
+        actions.appendChild(setBtn);
+      } else {
+        const tag = document.createElement('span');
+        tag.className = 'tag-active';
+        tag.textContent = 'Default';
+        actions.appendChild(tag);
+      }
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-icon btn-danger';
+      delBtn.type = 'button';
+      delBtn.title = 'Delete';
+      delBtn.insertAdjacentHTML('beforeend',
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+        '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>'
+      );
+      delBtn.addEventListener('click', () => deleteModel(i));
+      actions.appendChild(delBtn);
+
+      row.appendChild(dot);
+      row.appendChild(labelSpan);
+      row.appendChild(idSpan);
+      row.appendChild(actions);
       list.appendChild(row);
     });
   }
 
   async function setActive(id) {
-    await browser.storage.local.set({ activeModel: id });
-    // Sync the model field in Connection tab
+    // Write both activeModel AND model so panel.js picks it up
+    await browser.storage.local.set({ activeModel: id, model: id });
     const modelInput = document.getElementById('model');
     if (modelInput) modelInput.value = id;
     loadModels();
@@ -401,8 +435,14 @@
   async function deleteModel(i) {
     const s = await browser.storage.local.get(['models', 'activeModel']);
     const models = s.models || [];
+    const deleted = models[i];
     models.splice(i, 1);
-    await browser.storage.local.set({ models });
+    // If we deleted the active model, clear it
+    const updates = { models };
+    if (deleted && deleted.id === s.activeModel) {
+      updates.activeModel = '';
+    }
+    await browser.storage.local.set(updates);
     loadModels();
   }
 
@@ -412,6 +452,11 @@
     if (!label || !id) return;
     const s = await browser.storage.local.get('models');
     const models = s.models || [];
+    // Prevent duplicates
+    if (models.some(m => m.id === id)) {
+      document.getElementById('new-model-id').focus();
+      return;
+    }
     models.push({ id, label });
     await browser.storage.local.set({ models });
     document.getElementById('new-model-label').value = '';
@@ -419,13 +464,17 @@
     loadModels();
   }
 
-  function quickAdd(id, label) {
-    document.getElementById('new-model-id').value = id;
-    document.getElementById('new-model-label').value = label;
-    document.getElementById('new-model-id').focus();
-  }
-
   document.getElementById('btn-add-model').addEventListener('click', addModel);
+
+  // Quick-add chips — event delegation instead of inline onclick
+  document.getElementById('quick-add-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    document.getElementById('new-model-id').value = chip.dataset.id;
+    document.getElementById('new-model-label').value = chip.dataset.label;
+    document.getElementById('new-model-id').focus();
+  });
+
   loadModels();
   </script>
 </body>

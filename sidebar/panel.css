@@ -3,7 +3,7 @@
    ║  Apple-clean, Inter, zero accent color                           ║
    ╚══════════════════════════════════════════════════════════════════╝ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+/* Inter loaded via <link> in panel.html — no duplicate @import needed */
 
 /* ═══════════════════════════ DESIGN TOKENS ═════════════════════════ */
 :root {
@@ -426,7 +426,7 @@ textarea, input, select {
   border-bottom-right-radius: 4px;
 }
 
-.msg.ai .msg-bubble {
+.msg.assistant .msg-bubble {
   background: var(--bubble-ai);
   color: var(--text);
   border-bottom-left-radius: 4px;
