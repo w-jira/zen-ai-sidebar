@@ -97,6 +97,8 @@ const dom = {
   templatesList:     $('templates-list'),
   saveTemplateBtn:   $('save-template-btn'),
   templatesClose:    $('templates-close'),
+  healthDot:          $('health-dot'),
+  offlineBanner:      $('offline-banner'),
   setupOverlay:       $('setup-overlay'),
   setupSaveBtn:       $('setup-save-btn'),
   // Wizard
@@ -130,6 +132,8 @@ async function init() {
   if (!state.apiKey && !state.anthropicKey && !state.geminiKey) {
     dom.setupOverlay.style.display = 'flex';
   }
+
+  updateOnlineStatus();
 
   // Listen to messages from background/content scripts
   browser.runtime.onMessage.addListener(onMessage);
@@ -433,6 +437,8 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   if (changes.connectionMode) {
     state.connectionMode = changes.connectionMode.newValue || '';
+    setHealthDot(''); // reset health on mode change
+    updateOnlineStatus();
     buildModelMenu();
   }
   if (changes.apiKey)          state.apiKey          = changes.apiKey.newValue || '';
@@ -791,13 +797,17 @@ async function sendMessage(content) {
         await saveCurrentChat();
       }
     }
+    setHealthDot('green');
   } catch (err) {
     typingEl.remove();
     if (err.name === 'AbortError') { /* user cancelled */ }
     else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      setHealthDot('red');
       showError('Network error. Check your internet connection and endpoint URL.');
     } else {
-      showError(sanitizeErrorMsg(err.message) || 'Request failed. Check your API key in Settings.');
+      const msg = err.message || '';
+      setHealthDot(msg.includes('429') || msg.toLowerCase().includes('rate') ? 'amber' : 'red');
+      showError(sanitizeErrorMsg(msg) || 'Request failed. Check your API key in Settings.');
     }
   } finally {
     setGenerating(false);
@@ -1391,6 +1401,29 @@ function updateSendButton() {
 function scrollToBottom() {
   dom.messages.scrollTop = dom.messages.scrollHeight;
 }
+
+/* ═══════════════════════════ CONNECTION HEALTH ════════════════════ */
+function setHealthDot(status) {
+  // status: 'green' | 'amber' | 'red' | '' (gray/unknown)
+  if (!dom.healthDot) return;
+  dom.healthDot.className = 'health-dot' + (status ? ' ' + status : '');
+  const titles = { green: 'Connected', amber: 'Rate limited', red: 'Connection failed', '': 'Not tested' };
+  dom.healthDot.title = titles[status] || 'Not tested';
+}
+
+// Online/offline detection
+function updateOnlineStatus() {
+  if (!dom.offlineBanner) return;
+  // In local mode, offline is irrelevant
+  if (state.connectionMode === 'local') {
+    dom.offlineBanner.style.display = 'none';
+    return;
+  }
+  dom.offlineBanner.style.display = navigator.onLine ? 'none' : 'flex';
+}
+
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
 
 function showError(msg) {
   if (!msg) {

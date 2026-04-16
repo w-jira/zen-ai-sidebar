@@ -188,6 +188,35 @@ textarea, input, select {
   position: relative;
 }
 
+/* ─── Offline banner ─────────────────────────── */
+#offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: color-mix(in srgb, var(--accent, #c0474a) 12%, var(--bg));
+  color: var(--text2);
+  font-size: 11.5px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+
+#offline-banner svg { color: var(--accent, #c0474a); flex-shrink: 0; }
+
+/* ─── Connection health dot ─────────────────── */
+.health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border2);
+  transition: background 300ms ease;
+}
+
+.health-dot.green  { background: #4caf82; box-shadow: 0 0 0 2px rgba(76,175,130,0.2); }
+.health-dot.amber  { background: #d4a843; box-shadow: 0 0 0 2px rgba(212,168,67,0.2); }
+.health-dot.red    { background: #c0474a; box-shadow: 0 0 0 2px rgba(192,71,74,0.2); }
+
 .model-btn {
   display: flex;
   align-items: center;
