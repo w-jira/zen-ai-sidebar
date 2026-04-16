@@ -131,6 +131,7 @@ async function init() {
 
   if (!state.apiKey && !state.anthropicKey && !state.geminiKey && state.connectionMode !== 'local') {
     dom.setupOverlay.style.display = 'flex';
+    wizardGoTo(1); // ensure only step 1 is visible
   }
 
   updateOnlineStatus();
