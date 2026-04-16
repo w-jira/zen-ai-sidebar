@@ -1183,33 +1183,215 @@ textarea, input, select {
   line-height: 1.4;
 }
 
-/* legacy: keep #api-key-input targeting for compat */
-#api-key-input { /* handled by .setup-field input */ }
-
-#setup-model-row {
+/* ─── Wizard progress dots ─────────────────── */
+#setup-progress {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  gap: 6px;
+  margin: 4px 0 8px;
 }
 
-#setup-model-row label {
-  font-size: 11.5px;
+#setup-progress .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border2);
+  transition: background 200ms ease;
+}
+
+#setup-progress .dot.active {
+  background: var(--accent, var(--text2));
+}
+
+#setup-progress .dot.done {
+  background: var(--text3);
+}
+
+/* ─── Wizard steps ─────────────────────────── */
+.wizard-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-label {
+  font-size: 12px;
   font-weight: 600;
   color: var(--text2);
   text-transform: uppercase;
   letter-spacing: .04em;
 }
 
-#setup-model-select {
-  width: 100%;
-  padding: 9px 10px;
+/* ─── Mode selection cards ─────────────────── */
+#wizard-mode-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wizard-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
   border: 1px solid var(--border2);
   border-radius: var(--radius-btn);
   background: var(--bg2);
-  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 150ms, background 150ms;
+  text-align: left;
   font-family: inherit;
   color: var(--text);
-  box-sizing: border-box;
+}
+
+.wizard-mode-card:hover {
+  border-color: var(--text3);
+  background: var(--bg3, var(--bg2));
+}
+
+.wizard-mode-card.selected {
+  border-color: var(--accent, var(--text));
+  background: color-mix(in srgb, var(--accent, var(--text)) 8%, transparent);
+}
+
+.wizard-mode-icon {
+  color: var(--text2);
+}
+
+.wizard-mode-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wizard-mode-desc {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.4;
+}
+
+/* ─── Wizard local toggle ──────────────────── */
+.wizard-local-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.wizard-local-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  background: var(--bg2);
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.wizard-local-btn.active {
+  border-color: var(--text);
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* ─── Wizard nav ───────────────────────────── */
+.wizard-nav {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.wizard-btn-primary {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-btn);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: opacity 150ms;
+}
+
+.wizard-btn-primary:hover { opacity: 0.85; }
+.wizard-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.wizard-btn-ghost {
+  padding: 10px 16px;
+  border-radius: var(--radius-btn);
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 150ms, color 150ms;
+}
+
+.wizard-btn-ghost:hover {
+  border-color: var(--text3);
+  color: var(--text);
+}
+
+/* ─── Wizard model list (step 3) ──────────── */
+.wizard-model-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wizard-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.wizard-model-row:hover {
+  background: var(--bg2);
+}
+
+.wizard-model-row input[type="checkbox"] {
+  accent-color: var(--accent, var(--text));
+  margin: 0;
+  cursor: pointer;
+}
+
+.wizard-model-row .wm-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.wizard-model-row .wm-id {
+  color: var(--text3);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+}
+
+/* ─── Wizard ready ─────────────────────────── */
+.wizard-ready {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.wizard-ready h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
 }
 
 #setup-save-btn {
@@ -1222,6 +1404,7 @@ textarea, input, select {
   font-family: inherit;
   cursor: pointer;
   transition: opacity 150ms;
+  border: none;
   margin-top: 4px;
 }
 

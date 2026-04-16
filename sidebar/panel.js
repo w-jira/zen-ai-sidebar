@@ -98,10 +98,21 @@ const dom = {
   saveTemplateBtn:   $('save-template-btn'),
   templatesClose:    $('templates-close'),
   setupOverlay:       $('setup-overlay'),
-  apiKeyInput:        $('api-key-input'),
-  setupEndpointInput: $('setup-endpoint-input'),
-  setupModelSelect:   $('setup-model-select'),
   setupSaveBtn:       $('setup-save-btn'),
+  // Wizard
+  wizardStep1:        $('wizard-step-1'),
+  wizardStep2:        $('wizard-step-2'),
+  wizardStep3:        $('wizard-step-3'),
+  wizardStep4:        $('wizard-step-4'),
+  setupProgress:      $('setup-progress'),
+  wizardModeCards:    $('wizard-mode-cards'),
+  wizardProxy:        $('wizard-proxy'),
+  wizardDirect:       $('wizard-direct'),
+  wizardLocal:        $('wizard-local'),
+  wizardTestStatus:   $('wizard-test-status'),
+  wizardModelList:    $('wizard-model-list'),
+  wizardModelEmpty:   $('wizard-model-empty'),
+  wizardSummary:      $('wizard-summary'),
   toastContainer:    $('toast-container'),
 };
 
@@ -1630,18 +1641,307 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// Setup form
+/* ═══════════════════════════ SETUP WIZARD ═════════════════════════ */
+const wizard = {
+  step: 1,
+  mode: '',
+  discoveredModels: [],
+  enabledModels: [],
+};
+
+const POPULAR = new Set([
+  'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o',
+  'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+  'gemini-3.1-pro-preview', 'gemini-3.1-flash', 'gemini-3.1-flash-lite',
+  'o3', 'o4-mini',
+]);
+
+function wizardGuessProvider(id) {
+  const l = id.toLowerCase();
+  if (l.startsWith('claude')) return 'Anthropic';
+  if (l.startsWith('gpt') || l.startsWith('o1') || l.startsWith('o3') || l.startsWith('o4')) return 'OpenAI';
+  if (l.startsWith('gemini') || l.startsWith('gemma')) return 'Google';
+  if (l.includes('llama') || l.includes('meta')) return 'Meta';
+  if (l.includes('grok')) return 'xAI';
+  if (l.includes('deepseek')) return 'DeepSeek';
+  if (l.includes('mistral') || l.includes('codestral')) return 'Mistral';
+  return 'Other';
+}
+
+function wizardModelName(id) {
+  const m = MODEL_LIST.find(m => m.id === id);
+  if (m) return m.name;
+  return id.replace(/^[^/]+\//, '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function wizardGoTo(step) {
+  wizard.step = step;
+  [1, 2, 3, 4].forEach(s => {
+    const el = $('wizard-step-' + s);
+    if (el) el.style.display = s === step ? 'flex' : 'none';
+  });
+  // Update progress dots
+  dom.setupProgress.querySelectorAll('.dot').forEach(d => {
+    const s = parseInt(d.dataset.step);
+    d.className = 'dot' + (s === step ? ' active' : s < step ? ' done' : '');
+  });
+  // Update title per step
+  const titles = { 1: 'Welcome to Zen AI', 2: 'Configure Connection', 3: 'Discover Models', 4: 'Ready!' };
+  $('setup-title').textContent = titles[step] || '';
+  const subs = {
+    1: 'Your private AI sidebar. Bring your own API key \u2014 zero telemetry, no middlemen.',
+    2: 'Enter your credentials for ' + ({ proxy: 'your proxy', direct: 'your providers', local: 'your local server' }[wizard.mode] || 'your connection') + '.',
+    3: 'Testing your connection and finding available models\u2026',
+    4: '',
+  };
+  $('setup-sub').textContent = subs[step] || '';
+}
+
+// Step 1: Mode selection
+if (dom.wizardModeCards) {
+  dom.wizardModeCards.addEventListener('click', (e) => {
+    const card = e.target.closest('.wizard-mode-card');
+    if (!card) return;
+    wizard.mode = card.dataset.mode;
+    dom.wizardModeCards.querySelectorAll('.wizard-mode-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    // Show step 2 with correct fields
+    if (dom.wizardProxy) dom.wizardProxy.style.display = wizard.mode === 'proxy' ? 'block' : 'none';
+    if (dom.wizardDirect) dom.wizardDirect.style.display = wizard.mode === 'direct' ? 'block' : 'none';
+    if (dom.wizardLocal) dom.wizardLocal.style.display = wizard.mode === 'local' ? 'block' : 'none';
+    wizardGoTo(2);
+  });
+}
+
+// Step 2: Local provider toggle
+const wizardLocalToggle = document.querySelector('#wizard-local .wizard-local-toggle');
+if (wizardLocalToggle) {
+  wizardLocalToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('.wizard-local-btn');
+    if (!btn) return;
+    wizardLocalToggle.querySelectorAll('.wizard-local-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const urls = { ollama: 'http://localhost:11434/v1', lmstudio: 'http://localhost:1234/v1' };
+    const ep = $('wizard-local-endpoint');
+    if (ep) ep.value = urls[btn.dataset.provider] || '';
+  });
+}
+
+// Step 2: Back button
+const wizardBack2 = $('wizard-back-2');
+if (wizardBack2) wizardBack2.addEventListener('click', () => wizardGoTo(1));
+
+// Step 2: Next / Test & Discover
+const wizardNext2 = $('wizard-next-2');
+if (wizardNext2) {
+  wizardNext2.addEventListener('click', async () => {
+    wizardNext2.disabled = true;
+    wizardNext2.textContent = 'Testing\u2026';
+    wizardGoTo(3);
+    dom.wizardTestStatus.textContent = 'Testing connection\u2026';
+    dom.wizardModelList.textContent = '';
+    dom.wizardModelEmpty.style.display = 'none';
+
+    try {
+      let models = [];
+      if (wizard.mode === 'proxy') {
+        const ep = ($('wizard-proxy-endpoint') || {}).value?.trim().replace(/\/+$/, '') || '';
+        const key = ($('wizard-proxy-key') || {}).value?.trim() || '';
+        if (!ep) throw new Error('Enter a proxy URL');
+        const headers = {};
+        if (key) headers['Authorization'] = 'Bearer ' + key;
+        for (const path of ['/v1/models', '/models']) {
+          try {
+            const res = await fetch(ep + path, { headers });
+            if (!res.ok) continue;
+            const data = await res.json();
+            models = (data.data || data.models || []).map(m => ({
+              id: m.id || m.name,
+              name: wizardModelName(m.id || m.name),
+              provider: wizardGuessProvider(m.id || m.name),
+            }));
+            break;
+          } catch { /* try next */ }
+        }
+      } else if (wizard.mode === 'direct') {
+        const oKey = ($('wizard-openai-key') || {}).value?.trim() || '';
+        const aKey = ($('wizard-anthropic-key') || {}).value?.trim() || '';
+        const gKey = ($('wizard-gemini-key') || {}).value?.trim() || '';
+        if (!oKey && !aKey && !gKey) throw new Error('Enter at least one API key');
+        if (aKey) {
+          ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'].forEach(id => {
+            models.push({ id, name: wizardModelName(id), provider: 'Anthropic' });
+          });
+        }
+        if (oKey) {
+          try {
+            const res = await fetch('https://api.openai.com/v1/models', { headers: { 'Authorization': 'Bearer ' + oKey } });
+            if (res.ok) {
+              const data = await res.json();
+              (data.data || []).filter(m => m.id.startsWith('gpt') || m.id.startsWith('o3') || m.id.startsWith('o4')).forEach(m => {
+                models.push({ id: m.id, name: wizardModelName(m.id), provider: 'OpenAI' });
+              });
+            }
+          } catch { /* skip */ }
+        }
+        if (gKey) {
+          try {
+            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + gKey);
+            if (res.ok) {
+              const data = await res.json();
+              (data.models || []).forEach(m => {
+                const id = m.name.replace('models/', '');
+                if (id.startsWith('gemini')) models.push({ id, name: m.displayName || wizardModelName(id), provider: 'Google' });
+              });
+            }
+          } catch { /* skip */ }
+        }
+      } else if (wizard.mode === 'local') {
+        const ep = ($('wizard-local-endpoint') || {}).value?.trim().replace(/\/+$/, '') || 'http://localhost:11434/v1';
+        if (ep.includes('11434')) {
+          try {
+            const res = await fetch(ep.replace(/\/v1$/, '') + '/api/tags');
+            if (res.ok) {
+              const data = await res.json();
+              models = (data.models || []).map(m => ({ id: m.name || m.model, name: wizardModelName(m.name || m.model), provider: 'Local' }));
+            }
+          } catch { /* skip */ }
+        }
+        if (models.length === 0) {
+          const modelsUrl = ep.endsWith('/v1') ? ep + '/models' : ep + '/v1/models';
+          try {
+            const res = await fetch(modelsUrl);
+            if (res.ok) {
+              const data = await res.json();
+              models = (data.data || []).map(m => ({ id: m.id, name: wizardModelName(m.id), provider: 'Local' }));
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      wizard.discoveredModels = models;
+      if (models.length === 0) {
+        // Fallback: use MODEL_LIST for the selected mode
+        if (wizard.mode === 'proxy') wizard.discoveredModels = MODEL_LIST.map(m => ({ id: m.id, name: m.name, provider: m.group }));
+        else if (wizard.mode === 'direct') {
+          const oKey = ($('wizard-openai-key') || {}).value?.trim() || '';
+          const aKey = ($('wizard-anthropic-key') || {}).value?.trim() || '';
+          const gKey = ($('wizard-gemini-key') || {}).value?.trim() || '';
+          wizard.discoveredModels = MODEL_LIST.filter(m =>
+            (m.group === 'OpenAI' && oKey) || (m.group === 'Anthropic' && aKey) || (m.group === 'Google' && gKey)
+          ).map(m => ({ id: m.id, name: m.name, provider: m.group }));
+        }
+        dom.wizardTestStatus.textContent = 'Could not auto-detect models. Showing defaults \u2014 select which to enable:';
+      } else {
+        dom.wizardTestStatus.textContent = '\u2713 Found ' + models.length + ' model' + (models.length !== 1 ? 's' : '') + '. Select which to enable:';
+      }
+
+      // Pre-select popular models
+      wizard.enabledModels = wizard.discoveredModels.filter(m => POPULAR.has(m.id)).map(m => m.id);
+      if (wizard.enabledModels.length === 0) wizard.enabledModels = wizard.discoveredModels.slice(0, 5).map(m => m.id);
+
+      // Render model checkboxes
+      renderWizardModels();
+
+      const wizardNext3 = $('wizard-next-3');
+      if (wizardNext3) wizardNext3.disabled = false;
+    } catch (err) {
+      dom.wizardTestStatus.textContent = '\u2717 ' + err.message;
+      dom.wizardModelEmpty.style.display = 'block';
+      dom.wizardModelEmpty.textContent = 'Fix the issue above and go back to try again.';
+    } finally {
+      wizardNext2.disabled = false;
+      wizardNext2.textContent = 'Test & Discover';
+    }
+  });
+}
+
+function renderWizardModels() {
+  dom.wizardModelList.textContent = '';
+  wizard.discoveredModels.forEach(m => {
+    const row = document.createElement('label');
+    row.className = 'wizard-model-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = wizard.enabledModels.includes(m.id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) { if (!wizard.enabledModels.includes(m.id)) wizard.enabledModels.push(m.id); }
+      else { wizard.enabledModels = wizard.enabledModels.filter(id => id !== m.id); }
+    });
+    const name = document.createElement('span');
+    name.className = 'wm-name';
+    name.textContent = m.name;
+    const id = document.createElement('span');
+    id.className = 'wm-id';
+    id.textContent = m.id !== m.name ? m.id : '';
+    row.appendChild(cb);
+    row.appendChild(name);
+    if (id.textContent) row.appendChild(id);
+    dom.wizardModelList.appendChild(row);
+  });
+}
+
+// Step 3: Back
+const wizardBack3 = $('wizard-back-3');
+if (wizardBack3) wizardBack3.addEventListener('click', () => wizardGoTo(2));
+
+// Step 3: Continue
+const wizardNext3 = $('wizard-next-3');
+if (wizardNext3) {
+  wizardNext3.addEventListener('click', () => {
+    // Build summary
+    const count = wizard.enabledModels.length;
+    const modeLabel = { proxy: 'Proxy/Gateway', direct: 'Direct Provider Keys', local: 'Local Models' }[wizard.mode] || wizard.mode;
+    dom.wizardSummary.textContent = modeLabel + ' mode with ' + count + ' model' + (count !== 1 ? 's' : '') + ' enabled.';
+    wizardGoTo(4);
+  });
+}
+
+// Step 4: Start Chatting (final save)
 dom.setupSaveBtn.addEventListener('click', async () => {
-  const key      = dom.apiKeyInput.value.trim();
-  const endpoint = dom.setupEndpointInput ? dom.setupEndpointInput.value.trim() : '';
-  if (!key) { dom.apiKeyInput.focus(); showToast('Please enter an API key', 2000); return; }
-  state.apiKey   = key;
-  state.endpoint = endpoint;
-  state.model    = dom.setupModelSelect.value;
+  const saveData = {
+    connectionMode: wizard.mode,
+    discoveredModels: wizard.discoveredModels,
+    enabledModels: wizard.enabledModels,
+  };
+
+  if (wizard.mode === 'proxy') {
+    saveData.endpoint = ($('wizard-proxy-endpoint') || {}).value?.trim().replace(/\/+$/, '') || '';
+    saveData.apiKey = ($('wizard-proxy-key') || {}).value?.trim() || '';
+  } else if (wizard.mode === 'direct') {
+    saveData.openaiKey = ($('wizard-openai-key') || {}).value?.trim() || '';
+    saveData.apiKey = saveData.openaiKey; // backward compat
+    saveData.anthropicKey = ($('wizard-anthropic-key') || {}).value?.trim() || '';
+    saveData.geminiKey = ($('wizard-gemini-key') || {}).value?.trim() || '';
+  } else if (wizard.mode === 'local') {
+    saveData.localEndpoint = ($('wizard-local-endpoint') || {}).value?.trim().replace(/\/+$/, '') || 'http://localhost:11434/v1';
+    saveData.endpoint = saveData.localEndpoint;
+    saveData.localProvider = document.querySelector('#wizard-local .wizard-local-btn.active')?.dataset.provider || 'ollama';
+  }
+
+  // Set first enabled model as active
+  if (wizard.enabledModels.length > 0) {
+    saveData.model = wizard.enabledModels[0];
+  }
+
+  // Apply to state
+  Object.assign(state, {
+    connectionMode: saveData.connectionMode,
+    apiKey: saveData.apiKey || '',
+    anthropicKey: saveData.anthropicKey || '',
+    geminiKey: saveData.geminiKey || '',
+    endpoint: saveData.endpoint || '',
+    localEndpoint: saveData.localEndpoint || '',
+    discoveredModels: saveData.discoveredModels,
+    enabledModels: saveData.enabledModels,
+    model: saveData.model || state.model,
+  });
+
   dom.modelName.textContent = modelLabel(state.model);
-  await saveStorage({ apiKey: key, endpoint, model: state.model });
+  await browser.storage.local.set(saveData);
+  buildModelMenu();
   dom.setupOverlay.style.display = 'none';
-  showToast('Connected — start chatting!', 2000);
+  showToast('Connected \u2014 start chatting!', 2000);
 });
 
 /* ═══════════════════════════ BOOT ══════════════════════════════════ */
