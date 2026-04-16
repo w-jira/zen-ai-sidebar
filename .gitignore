@@ -7,6 +7,10 @@
 .amo-upload-uuid
 web-ext-artifacts/
 
+# Secrets / Claude
+.env
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -17,9 +21,10 @@ Thumbs.db
 *.swp
 *.swo
 
-# Secrets / Claude
-.env
-.claude/
+# Data
+*.db
+*.db-wal
+*.db-shm
 
 # Node (if ever used locally)
 node_modules/

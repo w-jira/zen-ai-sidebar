@@ -135,8 +135,10 @@ function inferConnectionMode(stored) {
   if (stored.endpoint && stored.endpoint.includes("localhost")) return "local";
   if (stored.endpoint) return "proxy";
   if (stored.anthropicKey || stored.geminiKey) return "direct";
-  if (stored.apiKey) return "direct";
-  return "proxy"; // default for new users
+  // apiKey alone is ambiguous — v1 users had it for proxy use, not direct.
+  // Only classify as direct if openaiKey is explicitly set.
+  if (stored.openaiKey) return "direct";
+  return "proxy"; // default for new users and v1 apiKey-only users
 }
 
 function syncModeToggle(mode) {
@@ -372,7 +374,7 @@ dom.settingsForm.addEventListener("submit", async (e) => {
     await browser.storage.local.set({
       connectionMode: connectionMode,
       endpoint:     dom.endpoint.value.trim().replace(/\/+$/, ""),
-      apiKey:       dom.apiKey.value.trim(),
+      apiKey:       connectionMode === "direct" && dom.openaiKey ? dom.openaiKey.value.trim() : dom.apiKey.value.trim(),
       openaiKey:    dom.openaiKey ? dom.openaiKey.value.trim() : "",
       anthropicKey: dom.anthropicKey.value.trim(),
       geminiKey:    dom.geminiKey.value.trim(),

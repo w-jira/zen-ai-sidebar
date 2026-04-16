@@ -129,7 +129,7 @@ async function init() {
   updateFooterPills();
   updatePinUI();
 
-  if (!state.apiKey && !state.anthropicKey && !state.geminiKey) {
+  if (!state.apiKey && !state.anthropicKey && !state.geminiKey && state.connectionMode !== 'local') {
     dom.setupOverlay.style.display = 'flex';
   }
 
@@ -436,7 +436,7 @@ function buildModelMenu() {
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   if (changes.connectionMode) {
-    state.connectionMode = changes.connectionMode.newValue || '';
+    state.connectionMode = changes.connectionMode.newValue || 'proxy';
     setHealthDot(''); // reset health on mode change
     updateOnlineStatus();
     buildModelMenu();
@@ -1691,11 +1691,11 @@ const POPULAR = new Set([
 
 function wizardGuessProvider(id) {
   const l = id.toLowerCase();
-  if (l.startsWith('claude')) return 'Anthropic';
-  if (l.startsWith('gpt') || l.startsWith('o1') || l.startsWith('o3') || l.startsWith('o4')) return 'OpenAI';
-  if (l.startsWith('gemini') || l.startsWith('gemma')) return 'Google';
+  if (l.startsWith('claude') || l.includes('anthropic')) return 'Anthropic';
+  if (l.startsWith('gpt') || l.startsWith('o1') || l.startsWith('o3') || l.startsWith('o4') || l.startsWith('chatgpt') || l.includes('openai')) return 'OpenAI';
+  if (l.startsWith('gemini') || l.startsWith('gemma') || l.includes('google')) return 'Google';
   if (l.includes('llama') || l.includes('meta')) return 'Meta';
-  if (l.includes('grok')) return 'xAI';
+  if (l.startsWith('grok') || l.includes('xai')) return 'xAI';
   if (l.includes('deepseek')) return 'DeepSeek';
   if (l.includes('mistral') || l.includes('codestral')) return 'Mistral';
   return 'Other';
