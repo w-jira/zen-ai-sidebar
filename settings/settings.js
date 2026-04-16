@@ -368,6 +368,7 @@ dom.settingsForm.addEventListener("submit", async (e) => {
       anthropicKey: dom.anthropicKey.value.trim(),
       geminiKey:    dom.geminiKey.value.trim(),
       localEndpoint: dom.localEndpoint ? dom.localEndpoint.value.trim() : "",
+      localProvider: dom.localProviderToggle ? (dom.localProviderToggle.querySelector(".toggle-btn.active") || {}).dataset?.value || "ollama" : "ollama",
       model:        activeModel,
       systemPrompt: dom.systemPrompt.value.trim(),
       maxTokens:    parseInt(dom.maxTokens.value, 10) || 2048,
@@ -382,11 +383,12 @@ dom.settingsForm.addEventListener("submit", async (e) => {
 
 /* ═══════════════════════════ AUTO-SAVE KEY FIELDS ═════════════════ */
 // Save connection fields on blur so sidebar picks them up immediately
-["endpoint", "apiKey", "anthropicKey", "geminiKey"].forEach((field) => {
+["endpoint", "apiKey", "anthropicKey", "geminiKey", "localEndpoint"].forEach((field) => {
+  if (!dom[field]) return;
   dom[field].addEventListener("change", async () => {
     const obj = {};
     let val = dom[field].value.trim();
-    if (field === "endpoint") val = val.replace(/\/+$/, "");
+    if (field === "endpoint" || field === "localEndpoint") val = val.replace(/\/+$/, "");
     obj[field] = val;
     await browser.storage.local.set(obj);
   });
@@ -482,6 +484,133 @@ dom.btnTest.addEventListener("click", async () => {
     dom.btnTest.disabled = false;
   }
 });
+
+/* ═══════════════════════════ TEST DIRECT CONNECTION ═══════════════ */
+if (dom.btnTestDirect) {
+  dom.btnTestDirect.addEventListener("click", async () => {
+    const openaiKey = dom.openaiKey ? dom.openaiKey.value.trim() : "";
+    const anthropicKey = dom.anthropicKey.value.trim();
+    const geminiKey = dom.geminiKey.value.trim();
+    const model = dom.modelDirect ? dom.modelDirect.value.trim() : "";
+
+    if (!openaiKey && !anthropicKey && !geminiKey) {
+      showStatus(dom.testResultDirect, "Enter at least one API key to test", "err");
+      return;
+    }
+
+    dom.btnTestDirect.disabled = true;
+    showStatus(dom.testResultDirect, "Testing\u2026", "");
+
+    const results = [];
+
+    try {
+      // Test each configured provider
+      if (anthropicKey) {
+        try {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": anthropicKey,
+              "anthropic-version": "2023-06-01",
+              "anthropic-dangerous-direct-browser-access": "true",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5",
+              messages: [{ role: "user", content: "Reply with: OK" }],
+              max_tokens: 10,
+            }),
+          });
+          results.push(res.ok ? "\u2713 Anthropic" : "\u2717 Anthropic (" + res.status + ")");
+        } catch (err) {
+          results.push("\u2717 Anthropic: " + err.message);
+        }
+      }
+
+      if (geminiKey) {
+        try {
+          const res = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=" + geminiKey,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: "Reply with: OK" }] }],
+                generationConfig: { maxOutputTokens: 10 },
+              }),
+            }
+          );
+          results.push(res.ok ? "\u2713 Google" : "\u2717 Google (" + res.status + ")");
+        } catch (err) {
+          results.push("\u2717 Google: " + err.message);
+        }
+      }
+
+      if (openaiKey) {
+        try {
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + openaiKey,
+            },
+            body: JSON.stringify({
+              model: "gpt-4o-mini",
+              messages: [{ role: "user", content: "Reply with: OK" }],
+              max_tokens: 10,
+              stream: false,
+            }),
+          });
+          results.push(res.ok ? "\u2713 OpenAI" : "\u2717 OpenAI (" + res.status + ")");
+        } catch (err) {
+          results.push("\u2717 OpenAI: " + err.message);
+        }
+      }
+
+      showStatus(dom.testResultDirect, results.join("  |  "), results.every((r) => r.startsWith("\u2713")) ? "ok" : "err");
+    } catch (err) {
+      showStatus(dom.testResultDirect, "\u2717 " + err.message, "err");
+    } finally {
+      dom.btnTestDirect.disabled = false;
+    }
+  });
+}
+
+/* ═══════════════════════════ TEST LOCAL CONNECTION ════════════════ */
+if (dom.btnTestLocal) {
+  dom.btnTestLocal.addEventListener("click", async () => {
+    const endpoint = dom.localEndpoint ? dom.localEndpoint.value.trim().replace(/\/+$/, "") : "";
+
+    if (!endpoint) {
+      showStatus(dom.testResultLocal, "No local endpoint configured", "err");
+      return;
+    }
+
+    dom.btnTestLocal.disabled = true;
+    showStatus(dom.testResultLocal, "Testing\u2026", "");
+
+    try {
+      // Try to list models (works for both Ollama and LM Studio)
+      const modelsUrl = endpoint.includes("11434")
+        ? endpoint.replace(/\/v1$/, "") + "/api/tags"
+        : endpoint + "/models";
+
+      const res = await fetch(modelsUrl, { method: "GET" });
+
+      if (res.ok) {
+        const data = await res.json();
+        const count = data.models ? data.models.length : data.data ? data.data.length : 0;
+        showStatus(dom.testResultLocal, "\u2713 Connected \u2014 " + count + " model" + (count !== 1 ? "s" : "") + " found", "ok");
+      } else {
+        showStatus(dom.testResultLocal, "\u2717 " + res.status + ": " + (await res.text()).slice(0, 80), "err");
+      }
+    } catch (err) {
+      showStatus(dom.testResultLocal, "\u2717 " + err.message + " \u2014 is the local server running?", "err");
+    } finally {
+      dom.btnTestLocal.disabled = false;
+    }
+  });
+}
 
 /* ═══════════════════════════ API KEY TOGGLE ════════════════════════ */
 dom.btnToggleKey.addEventListener("click", () => {

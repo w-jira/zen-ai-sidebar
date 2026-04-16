@@ -145,7 +145,7 @@ async function loadStorage() {
       'chatHistory', 'siteModels', 'singleTurn', 'streamingEnabled',
       'fontSize', 'responseLength', 'templates', 'systemPrompt', 'maxTokens', 'temperature',
     ]);
-    if (data.connectionMode)  state.connectionMode  = data.connectionMode;
+    state.connectionMode = data.connectionMode || 'proxy';
     if (data.apiKey)          state.apiKey          = data.apiKey;
     if (data.anthropicKey)    state.anthropicKey    = data.anthropicKey;
     if (data.geminiKey)       state.geminiKey       = data.geminiKey;
@@ -348,8 +348,6 @@ function setModel(id) {
 // Build the model dropdown menu dynamically from MODEL_LIST
 // Get models available for the current connection mode
 function getAvailableModels() {
-  // Proxy mode: all models are available (proxy routes them)
-  if (state.connectionMode === 'proxy' || state.endpoint) return MODEL_LIST;
   // Direct mode: only show models for providers with keys
   if (state.connectionMode === 'direct') {
     return MODEL_LIST.filter(m => {
@@ -359,9 +357,7 @@ function getAvailableModels() {
       return false;
     });
   }
-  // Local mode: show all (will be replaced by discovered models in Phase 2)
-  if (state.connectionMode === 'local') return MODEL_LIST;
-  // No mode set: show all as fallback
+  // Proxy, local, or unset: all models available (proxy routes them, local will be replaced by discovery in Phase 2)
   return MODEL_LIST;
 }
 

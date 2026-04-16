@@ -17,6 +17,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Secrets / Claude
+.env
+.claude/
+
 # Node (if ever used locally)
 node_modules/
 npm-debug.log
