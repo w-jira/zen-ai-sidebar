@@ -14,6 +14,8 @@ const state = {
   geminiKey: '',          // direct Google AI API key
   endpoint: '',           // custom endpoint, empty = auto-detect
   localEndpoint: '',      // local server URL
+  discoveredModels: [],   // [{ id, name, provider }]
+  enabledModels: [],      // string[] of enabled model IDs
   messages: [],           // { role:'user'|'assistant', content:string }
   generating: false,
   abortController: null,
@@ -141,7 +143,7 @@ async function loadStorage() {
   try {
     const data = await browser.storage.local.get([
       'connectionMode', 'apiKey', 'anthropicKey', 'geminiKey', 'endpoint',
-      'localEndpoint', 'model', 'theme',
+      'localEndpoint', 'discoveredModels', 'enabledModels', 'model', 'theme',
       'chatHistory', 'siteModels', 'singleTurn', 'streamingEnabled',
       'fontSize', 'responseLength', 'templates', 'systemPrompt', 'maxTokens', 'temperature',
     ]);
@@ -155,6 +157,8 @@ async function loadStorage() {
     if (state.connectionMode === 'local' && state.localEndpoint) {
       state.endpoint = state.localEndpoint;
     }
+    if (data.discoveredModels) state.discoveredModels = data.discoveredModels;
+    if (data.enabledModels)    state.enabledModels    = data.enabledModels;
     if (data.model)           state.model           = data.model;
     if (data.theme)           state.theme           = data.theme;
     if (data.chatHistory)     state.chatHistory     = data.chatHistory;
@@ -348,7 +352,13 @@ function setModel(id) {
 // Build the model dropdown menu dynamically from MODEL_LIST
 // Get models available for the current connection mode
 function getAvailableModels() {
-  // Direct mode: only show models for providers with keys
+  // If we have discovered models with enabled selections, use those
+  if (state.discoveredModels.length > 0 && state.enabledModels.length > 0) {
+    return state.discoveredModels
+      .filter(m => state.enabledModels.includes(m.id))
+      .map(m => ({ id: m.id, name: m.name, group: m.provider || 'Other' }));
+  }
+  // Direct mode without discovery: filter hardcoded list by configured keys
   if (state.connectionMode === 'direct') {
     return MODEL_LIST.filter(m => {
       if (m.group === 'OpenAI' && state.apiKey) return true;
@@ -357,7 +367,7 @@ function getAvailableModels() {
       return false;
     });
   }
-  // Proxy, local, or unset: all models available (proxy routes them, local will be replaced by discovery in Phase 2)
+  // Fallback: full hardcoded list
   return MODEL_LIST;
 }
 
@@ -415,6 +425,8 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (changes.anthropicKey)    { state.anthropicKey = changes.anthropicKey.newValue || ''; buildModelMenu(); }
   if (changes.geminiKey)       { state.geminiKey = changes.geminiKey.newValue || ''; buildModelMenu(); }
   if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
+  if (changes.discoveredModels) { state.discoveredModels = changes.discoveredModels.newValue || []; buildModelMenu(); }
+  if (changes.enabledModels)    { state.enabledModels = changes.enabledModels.newValue || []; buildModelMenu(); }
   if (changes.localEndpoint) {
     state.localEndpoint = changes.localEndpoint.newValue || '';
     if (state.connectionMode === 'local') state.endpoint = state.localEndpoint;

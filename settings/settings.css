@@ -580,43 +580,62 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
 #test-result.ok  { color: var(--color-success); }
 #test-result.err { color: var(--color-error); }
 
+/* ─── Model toolbar ──────────────────────────── */
+.model-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.model-toolbar-right {
+  display: flex;
+  gap: 4px;
+}
+
 /* ─── Model list ─────────────────────────────── */
+.model-group-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  padding: 10px 4px 4px;
+  margin-top: 4px;
+}
+
+.model-group-heading:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
 .model-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   background: var(--color-surface-2);
   transition: border-color var(--transition);
 }
 
 .model-row:last-child { margin-bottom: 0; }
 
-.model-row.active {
-  border-color: var(--color-primary);
-}
-
-.model-active-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-border);
-  flex-shrink: 0;
-  transition: background var(--transition);
-}
-
-.model-row.active .model-active-dot {
-  background: #4caf82;
-  box-shadow: 0 0 0 2px rgba(76,175,130,0.2);
+.model-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .model-label {
   font-size: 13px;
   font-weight: 500;
-  flex: 1;
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
@@ -624,30 +643,57 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
 }
 
 .model-id {
-  font-size: 11.5px;
+  font-size: 11px;
   font-family: var(--font-mono);
   color: var(--color-text-muted);
-  flex: 2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.model-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* ─── Toggle switch ──────────────────────────── */
+.model-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
-.tag-active {
-  font-size: 11px;
-  font-weight: 600;
-  color: #4caf82;
-  background: rgba(76,175,130,0.12);
-  border-radius: 6px;
-  padding: 2px 8px;
-  letter-spacing: 0.01em;
+.model-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: 20px;
+  transition: background 200ms ease;
+}
+
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--color-text-muted);
+  border-radius: 50%;
+  transition: transform 200ms ease, background 200ms ease;
+}
+
+.model-toggle input:checked + .toggle-slider {
+  background: var(--color-primary);
+}
+
+.model-toggle input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: #fff;
 }
 
 .model-empty {

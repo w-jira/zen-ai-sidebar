@@ -187,20 +187,30 @@
 
         <div class="card">
           <div class="card-header-row">
-            <h2>Your Models</h2>
+            <h2>Available Models</h2>
+            <span id="model-count" class="badge" style="margin-left:8px;"></span>
           </div>
-          <p class="section-desc">Manage your saved models. Click <em>Set default</em> to make a model active.</p>
+          <p class="section-desc">Toggle models ON/OFF to control which appear in the sidebar dropdown. Click <em>Re-detect</em> to refresh from your endpoint.</p>
+
+          <div class="model-toolbar">
+            <button type="button" id="btn-redetect" class="btn-secondary btn-sm">Re-detect Models</button>
+            <div class="model-toolbar-right">
+              <button type="button" id="btn-enable-all" class="btn-ghost btn-sm">Enable All</button>
+              <button type="button" id="btn-disable-all" class="btn-ghost btn-sm">Disable All</button>
+            </div>
+          </div>
 
           <div id="model-list"></div>
 
-          <div id="model-empty" class="model-empty" style="display:none">
+          <div id="model-empty" class="model-empty">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>No models yet &mdash; add one below</span>
+            <span>No models discovered yet. Use <em>Detect models</em> in the Connection tab or click <em>Re-detect</em> above.</span>
           </div>
         </div>
 
         <div class="card">
-          <h2>Add Model</h2>
+          <h2>Add Custom Model</h2>
+          <p class="section-desc">Manually add a model ID not returned by auto-discovery.</p>
           <div class="add-model-row">
             <div class="field" style="flex:1; margin-bottom:0">
               <label for="new-model-label">Display Name</label>
@@ -220,7 +230,7 @@
               <button type="button" class="chip" data-id="gpt-5.4-mini" data-label="GPT-5.4 mini">gpt-5.4-mini</button>
               <button type="button" class="chip" data-id="claude-sonnet-4-6" data-label="Claude Sonnet 4.6">claude-sonnet-4.6</button>
               <button type="button" class="chip" data-id="claude-haiku-4-5" data-label="Claude Haiku 4.5">claude-haiku-4.5</button>
-              <button type="button" class="chip" data-id="gemini-3.1-flash" data-label="Gemini 3.1 Flash">gemini-3.1-flash</button>
+              <button type="button" class="chip" data-id="gemini-3-flash-preview" data-label="Gemini 3 Flash">gemini-3-flash</button>
               <button type="button" class="chip" data-id="meta-llama/llama-4-maverick" data-label="Llama 4 Maverick">llama-4-maverick</button>
             </div>
           </div>
@@ -229,7 +239,7 @@
         <div class="card card-info">
           <div class="info-row">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <p>Models are auto-detected by prefix: <strong>claude-*</strong> uses Anthropic, <strong>gemini-*</strong> uses Google AI, everything else uses your backend URL. Set provider keys in the Connection tab to use models directly.</p>
+            <p>Only <strong>enabled</strong> models appear in the sidebar dropdown. Models are routed by prefix: <strong>claude-*</strong> &rarr; Anthropic, <strong>gemini-*</strong> &rarr; Google AI, everything else &rarr; your backend URL.</p>
           </div>
         </div>
 

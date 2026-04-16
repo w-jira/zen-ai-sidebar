@@ -98,6 +98,10 @@ const dom = {
   // Models tab
   modelList:      $("model-list"),
   modelEmpty:     $("model-empty"),
+  btnRedetect:    $("btn-redetect"),
+  btnEnableAll:   $("btn-enable-all"),
+  btnDisableAll:  $("btn-disable-all"),
+  modelCount:     $("model-count"),
   newModelLabel:  $("new-model-label"),
   newModelId:     $("new-model-id"),
   btnAddModel:    $("btn-add-model"),
@@ -301,6 +305,7 @@ async function loadSettings() {
     "localEndpoint", "localProvider",
     "model", "systemPrompt", "maxTokens", "temperature",
     "theme", "fontSize", "profiles", "activeProfile",
+    "discoveredModels", "enabledModels",
   ]);
 
   dom.endpoint.value     = stored.endpoint     || "";
@@ -337,6 +342,10 @@ async function loadSettings() {
 
   // Highlight matching preset card
   highlightPreset(stored.endpoint || "");
+
+  // Load discovered models into Models tab
+  discoveredModels = stored.discoveredModels || [];
+  enabledModels = stored.enabledModels || [];
 }
 
 function normalizeFontSize(val) {
@@ -744,102 +753,346 @@ dom.fontSizeGroup.addEventListener("click", async (e) => {
   await browser.storage.local.set({ fontSize: btn.dataset.value });
 });
 
-/* ═══════════════════════════ MODEL MANAGEMENT ═════════════════════ */
-async function loadModels() {
-  const s = await browser.storage.local.get(["models", "activeModel"]);
-  const models = s.models || [];
-  const active = s.activeModel || "";
-  renderModelList(models, active);
+/* ═══════════════════════════ MODEL DISCOVERY ═════════════════════ */
+// Popular models to pre-enable after discovery
+const POPULAR_MODELS = new Set([
+  "gpt-5.4", "gpt-5.4-mini", "gpt-4o",
+  "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
+  "gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview",
+  "o3", "o4-mini",
+]);
+
+function guessProvider(modelId) {
+  const id = modelId.toLowerCase();
+  if (id.startsWith("claude") || id.includes("anthropic")) return "Anthropic";
+  if (id.startsWith("gpt") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("o4") || id.startsWith("chatgpt") || id.includes("openai")) return "OpenAI";
+  if (id.startsWith("gemini") || id.startsWith("gemma") || id.includes("google")) return "Google";
+  if (id.startsWith("grok") || id.includes("xai")) return "xAI";
+  if (id.includes("llama") || id.includes("meta")) return "Meta";
+  if (id.includes("deepseek")) return "DeepSeek";
+  if (id.includes("mistral") || id.includes("codestral")) return "Mistral";
+  return "Other";
 }
 
-function renderModelList(models, active) {
+function modelDisplayName(id) {
+  // Try to find a nice name from MODEL_LIST
+  const known = MODEL_LIST.find((m) => m.id === id);
+  if (known) return known.name;
+  // Generate from ID: strip prefixes, capitalize
+  return id.replace(/^[^/]+\//, "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+async function discoverProxyModels(endpoint, apiKey) {
+  const base = endpoint.replace(/\/+$/, "");
+  const headers = {};
+  if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+
+  // Try /v1/models first, then /models
+  for (const path of ["/v1/models", "/models"]) {
+    try {
+      const res = await fetch(base + path, { headers });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = data.data || data.models || [];
+      return list.map((m) => ({
+        id: m.id || m.name,
+        name: modelDisplayName(m.id || m.name),
+        provider: guessProvider(m.id || m.name),
+      }));
+    } catch { /* try next */ }
+  }
+  throw new Error("Could not fetch models from " + base);
+}
+
+async function discoverDirectModels(openaiKey, anthropicKey, geminiKey) {
+  const models = [];
+
+  // Anthropic: hardcoded (no models endpoint)
+  if (anthropicKey) {
+    ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"].forEach((id) => {
+      models.push({ id, name: modelDisplayName(id), provider: "Anthropic" });
+    });
+  }
+
+  // OpenAI: fetch models endpoint
+  if (openaiKey) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/models", {
+        headers: { "Authorization": "Bearer " + openaiKey },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const chatModels = (data.data || []).filter((m) =>
+          m.id.startsWith("gpt") || m.id.startsWith("o1") || m.id.startsWith("o3") || m.id.startsWith("o4") || m.id.startsWith("chatgpt")
+        );
+        chatModels.forEach((m) => {
+          models.push({ id: m.id, name: modelDisplayName(m.id), provider: "OpenAI" });
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  // Google: fetch models endpoint
+  if (geminiKey) {
+    try {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiKey);
+      if (res.ok) {
+        const data = await res.json();
+        (data.models || []).forEach((m) => {
+          const id = m.name.replace("models/", "");
+          if (id.startsWith("gemini")) {
+            models.push({ id, name: m.displayName || modelDisplayName(id), provider: "Google" });
+          }
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  return models;
+}
+
+async function discoverLocalModels(endpoint) {
+  const base = endpoint.replace(/\/+$/, "");
+
+  // Try Ollama /api/tags first
+  if (base.includes("11434")) {
+    try {
+      const res = await fetch(base.replace(/\/v1$/, "") + "/api/tags");
+      if (res.ok) {
+        const data = await res.json();
+        return (data.models || []).map((m) => ({
+          id: m.name || m.model,
+          name: modelDisplayName(m.name || m.model),
+          provider: "Local",
+        }));
+      }
+    } catch { /* try fallback */ }
+  }
+
+  // LM Studio / generic: /v1/models
+  try {
+    const res = await fetch(base + "/models");
+    if (res.ok) {
+      const data = await res.json();
+      return (data.data || []).map((m) => ({
+        id: m.id,
+        name: modelDisplayName(m.id),
+        provider: "Local",
+      }));
+    }
+  } catch { /* skip */ }
+
+  throw new Error("Could not discover models from " + base);
+}
+
+async function runDiscovery() {
+  const stored = await browser.storage.local.get([
+    "connectionMode", "endpoint", "apiKey", "openaiKey", "anthropicKey", "geminiKey", "localEndpoint",
+  ]);
+  const mode = stored.connectionMode || connectionMode;
+
+  if (mode === "proxy") {
+    return discoverProxyModels(stored.endpoint || "", stored.apiKey || "");
+  } else if (mode === "direct") {
+    return discoverDirectModels(stored.openaiKey || stored.apiKey || "", stored.anthropicKey || "", stored.geminiKey || "");
+  } else if (mode === "local") {
+    return discoverLocalModels(stored.localEndpoint || "http://localhost:11434/v1");
+  }
+  return [];
+}
+
+/* ═══════════════════════════ MODEL MANAGEMENT (Phase 2) ═════════ */
+let discoveredModels = [];
+let enabledModels = [];
+
+async function loadModels() {
+  const s = await browser.storage.local.get(["discoveredModels", "enabledModels"]);
+  discoveredModels = s.discoveredModels || [];
+  enabledModels = s.enabledModels || [];
+  renderModelToggles();
+}
+
+function renderModelToggles() {
   dom.modelList.textContent = "";
 
-  if (models.length === 0) {
+  if (discoveredModels.length === 0) {
     dom.modelEmpty.style.display = "flex";
     return;
   }
   dom.modelEmpty.style.display = "none";
 
-  models.forEach((m, i) => {
-    const row = document.createElement("div");
-    row.className = "model-row" + (m.id === active ? " active" : "");
+  // Group by provider
+  const groups = {};
+  discoveredModels.forEach((m) => {
+    const g = m.provider || "Other";
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(m);
+  });
 
-    const dot = document.createElement("span");
-    dot.className = "model-active-dot";
-    dot.title = m.id === active ? "Active model" : "Not active";
+  Object.keys(groups).sort().forEach((provider) => {
+    const heading = document.createElement("div");
+    heading.className = "model-group-heading";
+    heading.textContent = provider;
+    dom.modelList.appendChild(heading);
 
-    const labelSpan = document.createElement("span");
-    labelSpan.className = "model-label";
-    labelSpan.textContent = m.label;
+    groups[provider].forEach((m) => {
+      const row = document.createElement("div");
+      row.className = "model-row";
 
-    const idSpan = document.createElement("span");
-    idSpan.className = "model-id";
-    idSpan.textContent = m.id;
+      const info = document.createElement("div");
+      info.className = "model-info";
 
-    const actions = document.createElement("div");
-    actions.className = "model-actions";
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "model-label";
+      labelSpan.textContent = m.name;
 
-    if (m.id !== active) {
-      const setBtn = document.createElement("button");
-      setBtn.className = "btn-ghost btn-sm";
-      setBtn.type = "button";
-      setBtn.textContent = "Set default";
-      setBtn.addEventListener("click", async () => {
-        await browser.storage.local.set({ activeModel: m.id, model: m.id });
-        dom.model.value = m.id;
-        loadModels();
+      const idSpan = document.createElement("span");
+      idSpan.className = "model-id";
+      idSpan.textContent = m.id;
+
+      info.appendChild(labelSpan);
+      info.appendChild(idSpan);
+
+      const toggle = document.createElement("label");
+      toggle.className = "model-toggle";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = enabledModels.includes(m.id);
+      checkbox.addEventListener("change", async () => {
+        if (checkbox.checked) {
+          if (!enabledModels.includes(m.id)) enabledModels.push(m.id);
+        } else {
+          enabledModels = enabledModels.filter((id) => id !== m.id);
+        }
+        await browser.storage.local.set({ enabledModels });
       });
-      actions.appendChild(setBtn);
-    } else {
-      const tag = document.createElement("span");
-      tag.className = "tag-active";
-      tag.textContent = "Default";
-      actions.appendChild(tag);
-    }
 
-    const delBtn = document.createElement("button");
-    delBtn.className = "btn-icon btn-danger";
-    delBtn.type = "button";
-    delBtn.title = "Delete";
-    delBtn.textContent = "\u00D7"; // &times;
-    delBtn.addEventListener("click", async () => {
-      const s = await browser.storage.local.get(["models", "activeModel"]);
-      const models = s.models || [];
-      const deleted = models[i];
-      models.splice(i, 1);
-      const updates = { models };
-      if (deleted && deleted.id === s.activeModel) {
-        updates.activeModel = "";
-      }
-      await browser.storage.local.set(updates);
-      loadModels();
+      const slider = document.createElement("span");
+      slider.className = "toggle-slider";
+
+      toggle.appendChild(checkbox);
+      toggle.appendChild(slider);
+
+      row.appendChild(info);
+      row.appendChild(toggle);
+      dom.modelList.appendChild(row);
     });
-    actions.appendChild(delBtn);
-
-    row.appendChild(dot);
-    row.appendChild(labelSpan);
-    row.appendChild(idSpan);
-    row.appendChild(actions);
-    dom.modelList.appendChild(row);
   });
 }
 
+// "Detect models" buttons in Connection tab
+if (dom.btnDetectModels) {
+  dom.btnDetectModels.addEventListener("click", async () => {
+    dom.btnDetectModels.textContent = "Detecting\u2026";
+    try {
+      const models = await discoverProxyModels(
+        dom.endpoint.value.trim().replace(/\/+$/, ""),
+        dom.apiKey.value.trim()
+      );
+      discoveredModels = models;
+      enabledModels = models.filter((m) => POPULAR_MODELS.has(m.id)).map((m) => m.id);
+      if (enabledModels.length === 0) enabledModels = models.slice(0, 5).map((m) => m.id);
+      await browser.storage.local.set({ discoveredModels, enabledModels });
+      renderModelToggles();
+      // Update proxy model select with discovered models
+      buildModelSelect(dom.model.value);
+      dom.btnDetectModels.textContent = "\u2713 " + models.length + " models found";
+      setTimeout(() => { dom.btnDetectModels.textContent = "Detect models from endpoint"; }, 3000);
+    } catch (err) {
+      dom.btnDetectModels.textContent = "\u2717 " + err.message;
+      setTimeout(() => { dom.btnDetectModels.textContent = "Detect models from endpoint"; }, 3000);
+    }
+  });
+}
+
+if (dom.btnDetectLocal) {
+  dom.btnDetectLocal.addEventListener("click", async () => {
+    dom.btnDetectLocal.textContent = "Detecting\u2026";
+    try {
+      const endpoint = dom.localEndpoint ? dom.localEndpoint.value.trim().replace(/\/+$/, "") : "http://localhost:11434/v1";
+      const models = await discoverLocalModels(endpoint);
+      discoveredModels = models;
+      enabledModels = models.map((m) => m.id); // enable all local models by default
+      await browser.storage.local.set({ discoveredModels, enabledModels });
+      renderModelToggles();
+      // Populate local model select
+      if (dom.modelLocal) {
+        dom.modelLocal.textContent = "";
+        models.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = m.name;
+          dom.modelLocal.appendChild(opt);
+        });
+      }
+      dom.btnDetectLocal.textContent = "\u2713 " + models.length + " models found";
+      setTimeout(() => { dom.btnDetectLocal.textContent = "Detect installed models"; }, 3000);
+    } catch (err) {
+      dom.btnDetectLocal.textContent = "\u2717 " + err.message;
+      setTimeout(() => { dom.btnDetectLocal.textContent = "Detect installed models"; }, 3000);
+    }
+  });
+}
+
+// "Re-detect" button on Models tab
+if (dom.btnRedetect) {
+  dom.btnRedetect.addEventListener("click", async () => {
+    dom.btnRedetect.disabled = true;
+    dom.btnRedetect.textContent = "Detecting\u2026";
+    try {
+      const models = await runDiscovery();
+      discoveredModels = models;
+      // Keep existing enabled selections, add popular new ones
+      const newIds = models.map((m) => m.id);
+      const existingEnabled = enabledModels.filter((id) => newIds.includes(id));
+      const newModels = models.filter((m) => !enabledModels.includes(m.id) && POPULAR_MODELS.has(m.id));
+      enabledModels = [...existingEnabled, ...newModels.map((m) => m.id)];
+      if (enabledModels.length === 0) enabledModels = models.slice(0, 5).map((m) => m.id);
+      await browser.storage.local.set({ discoveredModels, enabledModels });
+      renderModelToggles();
+      dom.btnRedetect.textContent = "\u2713 " + models.length + " found";
+      setTimeout(() => { dom.btnRedetect.textContent = "Re-detect Models"; }, 3000);
+    } catch (err) {
+      dom.btnRedetect.textContent = "\u2717 " + err.message;
+      setTimeout(() => { dom.btnRedetect.textContent = "Re-detect Models"; }, 3000);
+    } finally {
+      dom.btnRedetect.disabled = false;
+    }
+  });
+}
+
+// "Enable All" / "Disable All" buttons
+if (dom.btnEnableAll) {
+  dom.btnEnableAll.addEventListener("click", async () => {
+    enabledModels = discoveredModels.map((m) => m.id);
+    await browser.storage.local.set({ enabledModels });
+    renderModelToggles();
+  });
+}
+if (dom.btnDisableAll) {
+  dom.btnDisableAll.addEventListener("click", async () => {
+    enabledModels = [];
+    await browser.storage.local.set({ enabledModels });
+    renderModelToggles();
+  });
+}
+
+// Manual "Add Model" for custom IDs
 dom.btnAddModel.addEventListener("click", async () => {
   const label = dom.newModelLabel.value.trim();
   const id = dom.newModelId.value.trim();
   if (!label || !id) return;
-  const s = await browser.storage.local.get("models");
-  const models = s.models || [];
-  if (models.some((m) => m.id === id)) {
+  if (discoveredModels.some((m) => m.id === id)) {
     dom.newModelId.focus();
     return;
   }
-  models.push({ id, label });
-  await browser.storage.local.set({ models });
+  discoveredModels.push({ id, name: label, provider: guessProvider(id) });
+  enabledModels.push(id);
+  await browser.storage.local.set({ discoveredModels, enabledModels });
   dom.newModelLabel.value = "";
   dom.newModelId.value = "";
-  loadModels();
+  renderModelToggles();
 });
 
 dom.quickAddChips.addEventListener("click", (e) => {
