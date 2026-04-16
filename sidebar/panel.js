@@ -336,7 +336,10 @@ const MODEL_LIST = [
 
 function modelLabel(id) {
   const m = MODEL_LIST.find(m => m.id === id);
-  return m ? m.name : id;
+  if (m) return m.name;
+  const d = state.discoveredModels.find(m => m.id === id);
+  if (d) return d.name;
+  return id;
 }
 
 function setModel(id) {
@@ -352,8 +355,8 @@ function setModel(id) {
 // Build the model dropdown menu dynamically from MODEL_LIST
 // Get models available for the current connection mode
 function getAvailableModels() {
-  // If we have discovered models with enabled selections, use those
-  if (state.discoveredModels.length > 0 && state.enabledModels.length > 0) {
+  // If we have discovered models, use enabled selections (or empty if all disabled)
+  if (state.discoveredModels.length > 0) {
     return state.discoveredModels
       .filter(m => state.enabledModels.includes(m.id))
       .map(m => ({ id: m.id, name: m.name, group: m.provider || 'Other' }));
@@ -426,7 +429,14 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (changes.geminiKey)       { state.geminiKey = changes.geminiKey.newValue || ''; buildModelMenu(); }
   if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
   if (changes.discoveredModels) { state.discoveredModels = changes.discoveredModels.newValue || []; buildModelMenu(); }
-  if (changes.enabledModels)    { state.enabledModels = changes.enabledModels.newValue || []; buildModelMenu(); }
+  if (changes.enabledModels) {
+    state.enabledModels = changes.enabledModels.newValue || [];
+    // If current model was disabled, switch to first enabled model
+    if (state.enabledModels.length > 0 && !state.enabledModels.includes(state.model)) {
+      setModel(state.enabledModels[0]);
+    }
+    buildModelMenu();
+  }
   if (changes.localEndpoint) {
     state.localEndpoint = changes.localEndpoint.newValue || '';
     if (state.connectionMode === 'local') state.endpoint = state.localEndpoint;

@@ -248,66 +248,116 @@
       <h2 id="setup-title">Welcome to Zen AI</h2>
       <p id="setup-sub">Your private AI sidebar. Bring your own API key &mdash; zero telemetry, no middlemen.</p>
 
-      <div class="setup-field">
-        <label for="api-key-input">API Key <span class="setup-required">*</span></label>
-        <input id="api-key-input" type="password" placeholder="sk-… or your provider key" autocomplete="off" spellcheck="false" />
-        <div class="setup-hint">OpenAI, Anthropic, Google, or any compatible key</div>
+      <!-- Progress dots -->
+      <div id="setup-progress">
+        <span class="dot active" data-step="1"></span>
+        <span class="dot" data-step="2"></span>
+        <span class="dot" data-step="3"></span>
+        <span class="dot" data-step="4"></span>
       </div>
 
-      <div class="setup-field">
-        <label for="setup-endpoint-input">Custom Endpoint <span class="setup-optional">(optional)</span></label>
-        <input id="setup-endpoint-input" type="text" placeholder="https://your-vps.com/v1" autocomplete="off" spellcheck="false" />
-        <div class="setup-hint">Leave blank to use the provider&rsquo;s default API. Use this for your own VPS, OpenRouter, Ollama, or LiteLLM.</div>
+      <!-- STEP 1: Mode Selection -->
+      <div class="wizard-step" id="wizard-step-1">
+        <div class="setup-label">How do you connect?</div>
+        <div id="wizard-mode-cards">
+          <button type="button" class="wizard-mode-card" data-mode="proxy">
+            <span class="wizard-mode-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="5"/></svg>
+            </span>
+            <span class="wizard-mode-name">Proxy / Gateway</span>
+            <span class="wizard-mode-desc">OpenRouter, LiteLLM, or your own VPS. One endpoint, all models.</span>
+          </button>
+          <button type="button" class="wizard-mode-card" data-mode="direct">
+            <span class="wizard-mode-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </span>
+            <span class="wizard-mode-name">Direct Provider Keys</span>
+            <span class="wizard-mode-desc">Individual API keys for OpenAI, Anthropic, and Google.</span>
+          </button>
+          <button type="button" class="wizard-mode-card" data-mode="local">
+            <span class="wizard-mode-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+            </span>
+            <span class="wizard-mode-name">Local Models</span>
+            <span class="wizard-mode-desc">Ollama, LM Studio, or any local server. No API key needed.</span>
+          </button>
+        </div>
       </div>
-      <div id="setup-model-row">
-        <label for="setup-model-select">Model</label>
-        <select id="setup-model-select">
-          <optgroup label="OpenAI">
-            <option value="gpt-5.4">GPT-5.4</option>
-            <option value="gpt-5.4-mini">GPT-5.4 mini</option>
-            <option value="gpt-5.4-nano">GPT-5.4 nano</option>
-            <option value="gpt-5.3">GPT-5.3 Instant</option>
-            <option value="o3">o3</option>
-            <option value="o4-mini">o4-mini</option>
-            <option value="gpt-4o" selected>GPT-4o</option>
-            <option value="gpt-4o-mini">GPT-4o mini</option>
-          </optgroup>
-          <optgroup label="Anthropic">
-            <option value="claude-opus-4-6">Claude Opus 4.6</option>
-            <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-            <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-            <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet</option>
-          </optgroup>
-          <optgroup label="Google">
-            <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
-            <option value="gemini-3.1-flash">Gemini 3.1 Flash</option>
-            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-            <option value="google/gemma-4-27b-it">Gemma 4 27B</option>
-            <option value="google/gemma-4-4b-it">Gemma 4 4B</option>
-          </optgroup>
-          <optgroup label="Meta">
-            <option value="meta-llama/llama-4-maverick">Llama 4 Maverick</option>
-            <option value="meta-llama/llama-4-scout">Llama 4 Scout</option>
-            <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
-          </optgroup>
-          <optgroup label="xAI">
-            <option value="grok-4.20">Grok 4.20</option>
-            <option value="grok-4.1-fast">Grok 4.1 Fast</option>
-          </optgroup>
-          <optgroup label="DeepSeek">
-            <option value="deepseek/deepseek-r1">DeepSeek R1</option>
-            <option value="deepseek/deepseek-chat">DeepSeek Chat</option>
-          </optgroup>
-          <optgroup label="Mistral">
-            <option value="mistral-small-2603">Mistral Small 4</option>
-            <option value="mistral-large-latest">Mistral Large</option>
-            <option value="codestral-latest">Codestral</option>
-          </optgroup>
-        </select>
+
+      <!-- STEP 2: Mode-Specific Config -->
+      <div class="wizard-step" id="wizard-step-2" style="display:none;">
+        <div class="setup-label" id="wizard-step2-label">Configure your connection</div>
+
+        <!-- Proxy config -->
+        <div id="wizard-proxy" style="display:none;">
+          <div class="setup-field">
+            <label for="wizard-proxy-endpoint">Proxy URL</label>
+            <input id="wizard-proxy-endpoint" type="url" placeholder="https://openrouter.ai/api/v1" autocomplete="off" spellcheck="false" />
+            <div class="setup-hint"><code>/chat/completions</code> is appended automatically</div>
+          </div>
+          <div class="setup-field">
+            <label for="wizard-proxy-key">API Key</label>
+            <input id="wizard-proxy-key" type="password" placeholder="sk-... or proxy key" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+
+        <!-- Direct config -->
+        <div id="wizard-direct" style="display:none;">
+          <div class="setup-field">
+            <label for="wizard-openai-key">OpenAI Key <span class="setup-optional">(optional)</span></label>
+            <input id="wizard-openai-key" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="setup-field">
+            <label for="wizard-anthropic-key">Anthropic Key <span class="setup-optional">(optional)</span></label>
+            <input id="wizard-anthropic-key" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="setup-field">
+            <label for="wizard-gemini-key">Google AI Key <span class="setup-optional">(optional)</span></label>
+            <input id="wizard-gemini-key" type="password" placeholder="AIza..." autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="setup-hint">Enter at least one key. You can add more later in Settings.</div>
+        </div>
+
+        <!-- Local config -->
+        <div id="wizard-local" style="display:none;">
+          <div class="wizard-local-toggle">
+            <button type="button" class="wizard-local-btn active" data-provider="ollama">Ollama</button>
+            <button type="button" class="wizard-local-btn" data-provider="lmstudio">LM Studio</button>
+          </div>
+          <div class="setup-field">
+            <label for="wizard-local-endpoint">Server URL</label>
+            <input id="wizard-local-endpoint" type="url" value="http://localhost:11434/v1" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="setup-hint">Make sure your local server is running before continuing.</div>
+        </div>
+
+        <div class="wizard-nav">
+          <button type="button" id="wizard-back-2" class="wizard-btn-ghost">Back</button>
+          <button type="button" id="wizard-next-2" class="wizard-btn-primary">Test &amp; Discover</button>
+        </div>
       </div>
-      <button id="setup-save-btn">Save &amp; Start</button>
+
+      <!-- STEP 3: Test & Discover -->
+      <div class="wizard-step" id="wizard-step-3" style="display:none;">
+        <div id="wizard-test-status" class="setup-hint">Testing connection&hellip;</div>
+        <div id="wizard-model-list" class="wizard-model-list"></div>
+        <div id="wizard-model-empty" class="setup-hint" style="display:none;">No models found. Check your connection settings.</div>
+        <div class="wizard-nav">
+          <button type="button" id="wizard-back-3" class="wizard-btn-ghost">Back</button>
+          <button type="button" id="wizard-next-3" class="wizard-btn-primary" disabled>Continue</button>
+        </div>
+      </div>
+
+      <!-- STEP 4: Ready -->
+      <div class="wizard-step" id="wizard-step-4" style="display:none;">
+        <div class="wizard-ready">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
+          <h3>You&rsquo;re all set!</h3>
+          <p class="setup-hint" id="wizard-summary"></p>
+        </div>
+        <button type="button" id="setup-save-btn" class="wizard-btn-primary" style="width:100%;">Start Chatting</button>
+      </div>
+
     </div>
   </div>
 

@@ -539,7 +539,7 @@ if (dom.btnTestDirect) {
       if (geminiKey) {
         try {
           const res = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=" + geminiKey,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + geminiKey,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -602,7 +602,7 @@ if (dom.btnTestLocal) {
       // Try to list models (works for both Ollama and LM Studio)
       const modelsUrl = endpoint.includes("11434")
         ? endpoint.replace(/\/v1$/, "") + "/api/tags"
-        : endpoint + "/models";
+        : endpoint.endsWith("/v1") ? endpoint + "/models" : endpoint + "/v1/models";
 
       const res = await fetch(modelsUrl, { method: "GET" });
 
@@ -758,7 +758,7 @@ dom.fontSizeGroup.addEventListener("click", async (e) => {
 const POPULAR_MODELS = new Set([
   "gpt-5.4", "gpt-5.4-mini", "gpt-4o",
   "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
-  "gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview",
+  "gemini-3.1-pro-preview", "gemini-3.1-flash", "gemini-3.1-flash-lite",
   "o3", "o4-mini",
 ]);
 
@@ -870,8 +870,9 @@ async function discoverLocalModels(endpoint) {
   }
 
   // LM Studio / generic: /v1/models
+  const modelsUrl = base.endsWith("/v1") ? base + "/models" : base + "/v1/models";
   try {
-    const res = await fetch(base + "/models");
+    const res = await fetch(modelsUrl);
     if (res.ok) {
       const data = await res.json();
       return (data.data || []).map((m) => ({
@@ -966,6 +967,7 @@ function renderModelToggles() {
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = enabledModels.includes(m.id);
+      checkbox.setAttribute("aria-label", "Toggle " + m.name);
       checkbox.addEventListener("change", async () => {
         if (checkbox.checked) {
           if (!enabledModels.includes(m.id)) enabledModels.push(m.id);
@@ -991,12 +993,15 @@ function renderModelToggles() {
 // "Detect models" buttons in Connection tab
 if (dom.btnDetectModels) {
   dom.btnDetectModels.addEventListener("click", async () => {
+    const ep = dom.endpoint.value.trim().replace(/\/+$/, "");
+    if (!ep) {
+      dom.btnDetectModels.textContent = "Enter a proxy URL first";
+      setTimeout(() => { dom.btnDetectModels.textContent = "Detect models from endpoint"; }, 3000);
+      return;
+    }
     dom.btnDetectModels.textContent = "Detecting\u2026";
     try {
-      const models = await discoverProxyModels(
-        dom.endpoint.value.trim().replace(/\/+$/, ""),
-        dom.apiKey.value.trim()
-      );
+      const models = await discoverProxyModels(ep, dom.apiKey.value.trim());
       discoveredModels = models;
       enabledModels = models.filter((m) => POPULAR_MODELS.has(m.id)).map((m) => m.id);
       if (enabledModels.length === 0) enabledModels = models.slice(0, 5).map((m) => m.id);

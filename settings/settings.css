@@ -662,9 +662,13 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
 }
 
 .model-toggle input {
+  position: absolute;
   opacity: 0;
-  width: 0;
-  height: 0;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+  z-index: 1;
+  margin: 0;
 }
 
 .toggle-slider {
@@ -685,6 +689,10 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
   background: var(--color-text-muted);
   border-radius: 50%;
   transition: transform 200ms ease, background 200ms ease;
+}
+
+.model-toggle input:focus-visible + .toggle-slider {
+  box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-primary);
 }
 
 .model-toggle input:checked + .toggle-slider {
@@ -851,4 +859,19 @@ select {
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 30px;
+}
+
+/* ─── Responsive ────────────────────────────── */
+@media (max-width: 480px) {
+  .model-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .model-toolbar-right { width: 100%; }
+  .model-toolbar-right button { flex: 1; }
+  .add-model-row {
+    flex-direction: column;
+  }
+  .add-model-row .field { flex: none !important; }
+  .add-model-row button { width: 100%; }
 }
