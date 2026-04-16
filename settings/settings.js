@@ -915,6 +915,13 @@ async function loadModels() {
 function renderModelToggles() {
   dom.modelList.textContent = "";
 
+  // Update count badge
+  if (dom.modelCount) {
+    dom.modelCount.textContent = discoveredModels.length > 0
+      ? enabledModels.length + "/" + discoveredModels.length
+      : "";
+  }
+
   if (discoveredModels.length === 0) {
     dom.modelEmpty.style.display = "flex";
     return;
