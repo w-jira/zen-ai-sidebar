@@ -158,6 +158,20 @@ function syncModeToggle(mode) {
 dom.modeToggle.addEventListener("click", async (e) => {
   const btn = e.target.closest(".toggle-btn");
   if (!btn) return;
+  // Persist the currently visible tab's values before switching so nothing is lost
+  // if the user typed but never blurred the field.
+  const snapshot = {};
+  if (dom.endpoint && dom.endpoint.value.trim()) {
+    snapshot.endpoint = dom.endpoint.value.trim().replace(/\/+$/, "");
+  }
+  if (dom.apiKey && dom.apiKey.value.trim()) {
+    snapshot.apiKey = dom.apiKey.value.trim();
+  }
+  if (dom.localEndpoint && dom.localEndpoint.value.trim()) {
+    snapshot.localEndpoint = dom.localEndpoint.value.trim().replace(/\/+$/, "");
+  }
+  if (Object.keys(snapshot).length) await browser.storage.local.set(snapshot);
+
   const mode = btn.dataset.value;
   syncModeToggle(mode);
   await browser.storage.local.set({ connectionMode: mode });
@@ -267,17 +281,13 @@ setupModelAutoSave(dom.model);
 if (dom.modelDirect) setupModelAutoSave(dom.modelDirect);
 if (dom.modelLocal) setupModelAutoSave(dom.modelLocal);
 
-// Auto-save direct mode keys on change
+// Auto-save direct mode keys on change — each key stays in its own slot,
+// never cross-writes to apiKey (the proxy/gateway bearer).
 ["openaiKey", "anthropicKey", "geminiKey"].forEach((field) => {
   const el = dom[field];
   if (!el) return;
   el.addEventListener("change", async () => {
-    const obj = {};
-    obj[field] = el.value.trim();
-    // In direct mode, also set apiKey to the OpenAI key for panel.js compatibility
-    if (field === "openaiKey") obj.apiKey = el.value.trim();
-    await browser.storage.local.set(obj);
-    // Rebuild direct model select when keys change
+    await browser.storage.local.set({ [field]: el.value.trim() });
     if (dom.modelDirect) {
       const current = dom.modelDirect.value;
       buildFilteredModelSelect(dom.modelDirect, current, "direct");
@@ -313,7 +323,7 @@ async function loadSettings() {
 
   dom.endpoint.value     = stored.endpoint     || "";
   dom.apiKey.value       = stored.apiKey       || "";
-  if (dom.openaiKey) dom.openaiKey.value = stored.openaiKey || stored.apiKey || "";
+  if (dom.openaiKey) dom.openaiKey.value = stored.openaiKey || "";
   dom.anthropicKey.value = stored.anthropicKey || "";
   dom.geminiKey.value    = stored.geminiKey    || "";
   if (dom.localEndpoint) dom.localEndpoint.value = stored.localEndpoint || "http://localhost:11434/v1";
@@ -375,7 +385,7 @@ dom.settingsForm.addEventListener("submit", async (e) => {
     await browser.storage.local.set({
       connectionMode: connectionMode,
       endpoint:     dom.endpoint.value.trim().replace(/\/+$/, ""),
-      apiKey:       connectionMode === "direct" && dom.openaiKey ? dom.openaiKey.value.trim() : dom.apiKey.value.trim(),
+      apiKey:       dom.apiKey.value.trim(),
       openaiKey:    dom.openaiKey ? dom.openaiKey.value.trim() : "",
       anthropicKey: dom.anthropicKey.value.trim(),
       geminiKey:    dom.geminiKey.value.trim(),
@@ -405,6 +415,23 @@ dom.settingsForm.addEventListener("submit", async (e) => {
     await browser.storage.local.set(obj);
   });
 });
+
+/* ═══════════════════════════ URL INPUT PREFILL ════════════════════ */
+// Pre-fill https:// on focus for empty external URL inputs. Local endpoint
+// is excluded because users typically type http://localhost.
+function attachHttpsPrefill(el) {
+  if (!el) return;
+  el.addEventListener("focus", () => {
+    if (!el.value.trim()) {
+      el.value = "https://";
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  });
+  el.addEventListener("blur", () => {
+    if (el.value.trim() === "https://") el.value = "";
+  });
+}
+attachHttpsPrefill(dom.endpoint);
 
 /* ═══════════════════════════ TEST CONNECTION ═══════════════════════ */
 dom.btnTest.addEventListener("click", async () => {

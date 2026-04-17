@@ -9,7 +9,8 @@
 const state = {
   model: 'gpt-4o',
   connectionMode: '',     // 'proxy', 'direct', 'local'
-  apiKey: '',
+  apiKey: '',             // proxy/gateway key (bearer)
+  openaiKey: '',          // direct OpenAI API key
   anthropicKey: '',       // direct Anthropic API key
   geminiKey: '',          // direct Google AI API key
   endpoint: '',           // custom endpoint, empty = auto-detect
@@ -129,7 +130,9 @@ async function init() {
   updateFooterPills();
   updatePinUI();
 
-  if (!state.apiKey && !state.anthropicKey && !state.geminiKey && state.connectionMode !== 'local') {
+  const hasCredential = state.apiKey || state.openaiKey || state.anthropicKey ||
+                        state.geminiKey || state.endpoint || state.connectionMode === 'local';
+  if (!hasCredential) {
     dom.setupOverlay.style.display = 'flex';
     wizardGoTo(1); // ensure only step 1 is visible
   }
@@ -138,6 +141,9 @@ async function init() {
 
   // Listen to messages from background/content scripts
   browser.runtime.onMessage.addListener(onMessage);
+
+  // Signal background to request page content from the active tab
+  browser.runtime.sendMessage({ type: 'SIDEBAR_READY' }).catch(() => {});
 
   // Get current tab info
   try {
@@ -158,13 +164,14 @@ function normalizeFontSize(val) {
 async function loadStorage() {
   try {
     const data = await browser.storage.local.get([
-      'connectionMode', 'apiKey', 'anthropicKey', 'geminiKey', 'endpoint',
+      'connectionMode', 'apiKey', 'openaiKey', 'anthropicKey', 'geminiKey', 'endpoint',
       'localEndpoint', 'discoveredModels', 'enabledModels', 'model', 'theme',
       'chatHistory', 'siteModels', 'singleTurn', 'streamingEnabled',
       'fontSize', 'responseLength', 'templates', 'systemPrompt', 'maxTokens', 'temperature',
     ]);
     state.connectionMode = data.connectionMode || 'proxy';
     if (data.apiKey)          state.apiKey          = data.apiKey;
+    if (data.openaiKey)       state.openaiKey       = data.openaiKey;
     if (data.anthropicKey)    state.anthropicKey    = data.anthropicKey;
     if (data.geminiKey)       state.geminiKey       = data.geminiKey;
     if (data.endpoint)        state.endpoint        = data.endpoint;
@@ -238,6 +245,11 @@ function handleTabChanged(msg) {
   dom.contextBanner.style.display = 'none';
   dom.autoSummaryCard.style.display = 'none';
   showToast('New page — context updated', 2000);
+
+  // Re-request content for the new tab — delay gives the new content script time to init
+  setTimeout(() => {
+    browser.runtime.sendMessage({ type: 'SIDEBAR_READY' }).catch(() => {});
+  }, 300);
 
   // Per-site model pinning
   if (msg.url) {
@@ -381,7 +393,7 @@ function getAvailableModels() {
   // Direct mode without discovery: filter hardcoded list by configured keys
   if (state.connectionMode === 'direct') {
     return MODEL_LIST.filter(m => {
-      if (m.group === 'OpenAI' && state.apiKey) return true;
+      if (m.group === 'OpenAI' && (state.apiKey || state.openaiKey)) return true;
       if (m.group === 'Anthropic' && state.anthropicKey) return true;
       if (m.group === 'Google' && state.geminiKey) return true;
       return false;
@@ -443,7 +455,8 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     updateOnlineStatus();
     buildModelMenu();
   }
-  if (changes.apiKey)          state.apiKey          = changes.apiKey.newValue || '';
+  if (changes.apiKey)          { state.apiKey = changes.apiKey.newValue || ''; buildModelMenu(); }
+  if (changes.openaiKey)       { state.openaiKey = changes.openaiKey.newValue || ''; buildModelMenu(); }
   if (changes.anthropicKey)    { state.anthropicKey = changes.anthropicKey.newValue || ''; buildModelMenu(); }
   if (changes.geminiKey)       { state.geminiKey = changes.geminiKey.newValue || ''; buildModelMenu(); }
   if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
@@ -648,6 +661,15 @@ function renderMessage(role, content, streaming = false) {
     });
   }
   innerWrap.appendChild(actionsEl);
+
+  // Per-message approximate token count (assistant only, skip while streaming)
+  if (role === 'assistant' && !streaming && content) {
+    const tokenLabel = document.createElement('div');
+    tokenLabel.className = 'msg-token-count';
+    const approx = Math.max(1, Math.ceil(content.length / 4));
+    tokenLabel.textContent = `~${approx} tokens`;
+    innerWrap.appendChild(tokenLabel);
+  }
 
   msgEl.appendChild(innerWrap);
   dom.messages.appendChild(msgEl);
@@ -932,6 +954,13 @@ async function streamResponse(history, typingEl) {
     });
     inner.appendChild(actionsEl);
 
+    // Per-message approximate token count
+    const tokenLabel = document.createElement('div');
+    tokenLabel.className = 'msg-token-count';
+    const approx = Math.max(1, Math.ceil(fullText.length / 4));
+    tokenLabel.textContent = `~${approx} tokens`;
+    inner.appendChild(tokenLabel);
+
     updateTokenCounter();
     await saveCurrentChat();
   }
@@ -1022,9 +1051,11 @@ function getApiHeaders() {
     // API key is in URL for Gemini
     return { 'Content-Type': 'application/json' };
   }
+  // OpenAI / proxy / gateway — prefer proxy apiKey, fall back to direct openaiKey
+  const key = state.apiKey || state.openaiKey || '';
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${state.apiKey}`,
+    'Authorization': `Bearer ${key}`,
   };
 }
 
@@ -1978,6 +2009,23 @@ dom.setupSaveBtn.addEventListener('click', async () => {
   dom.setupOverlay.style.display = 'none';
   showToast('Connected \u2014 start chatting!', 2000);
 });
+
+/* ═══════════════════════════ URL INPUT HELPERS ═════════════════════ */
+// Pre-fill https:// on focus for empty external URL inputs. Clears if still bare
+// https:// on blur so the field doesn't look "stuck" if the user abandons it.
+function attachHttpsPrefill(el) {
+  if (!el) return;
+  el.addEventListener('focus', () => {
+    if (!el.value.trim()) {
+      el.value = 'https://';
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  });
+  el.addEventListener('blur', () => {
+    if (el.value.trim() === 'https://') el.value = '';
+  });
+}
+attachHttpsPrefill($('wizard-proxy-endpoint'));
 
 /* ═══════════════════════════ BOOT ══════════════════════════════════ */
 init();

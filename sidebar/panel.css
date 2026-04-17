@@ -540,6 +540,14 @@ textarea, input, select {
   display: flex;
 }
 
+.msg-token-count {
+  font-size: 10px;
+  color: var(--text3);
+  opacity: 0.5;
+  margin-top: 4px;
+  padding-left: 2px;
+}
+
 .msg-action-btn {
   display: flex;
   align-items: center;

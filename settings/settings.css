@@ -568,17 +568,40 @@ button { cursor: pointer; border: none; font-family: var(--font-body); }
 /* ─── Test row ───────────────────────────────── */
 #test-row {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 12px;
   margin-top: 16px;
 }
 
-#test-result {
+#test-result,
+#test-result-direct,
+#test-result-local {
   font-size: 12.5px;
   font-weight: 500;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex: 1 1 100%;
 }
-#test-result.ok  { color: var(--color-success); }
-#test-result.err { color: var(--color-error); }
+#test-result.ok,
+#test-result-direct.ok,
+#test-result-local.ok  { color: var(--color-success); }
+#test-result.err,
+#test-result-direct.err,
+#test-result-local.err { color: var(--color-error); }
+
+/* Local-mode hint / help boxes under the test button */
+.setup-hint,
+.local-hint-box {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  max-width: 100%;
+  box-sizing: border-box;
+}
 
 /* ─── Model toolbar ──────────────────────────── */
 .model-toolbar {
