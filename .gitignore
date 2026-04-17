@@ -29,3 +29,6 @@ Thumbs.db
 # Node (if ever used locally)
 node_modules/
 npm-debug.log
+
+# Claude Code project memory — local only
+CLAUDE.md
