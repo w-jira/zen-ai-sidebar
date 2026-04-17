@@ -71,6 +71,8 @@ const dom = {
   autoSummaryCard:   $('auto-summary-card'),
   autoSummaryContent:$('auto-summary-content'),
   autoSummaryDismiss:$('auto-summary-dismiss'),
+  autoSummaryAllowRow: $('auto-summary-allow-row'),
+  autoSummaryAllowBtn: $('auto-summary-allow-btn'),
   messagesWrap:      $('messages-wrap'),
   messages:          $('messages'),
   emptyState:        $('empty-state'),
@@ -377,12 +379,20 @@ const SUMMARY_DENYLIST = [
   { type: 'domain', value: 'usbank.com' }, { type: 'domain', value: 'pnc.com' },
   { type: 'domain', value: 'fidelity.com' }, { type: 'domain', value: 'vanguard.com' },
   { type: 'domain', value: 'schwab.com' }, { type: 'domain', value: 'etrade.com' },
+  { type: 'domain', value: 'tdameritrade.com' }, { type: 'domain', value: 'merrilledge.com' },
+  { type: 'domain', value: 'interactivebrokers.com' }, { type: 'domain', value: 'tradestation.com' },
+  { type: 'domain', value: 'empower.com' }, { type: 'domain', value: 'principal.com' },
+  { type: 'domain', value: 'tiaa.org' },
   { type: 'domain', value: 'robinhood.com' }, { type: 'domain', value: 'americanexpress.com' },
   { type: 'domain', value: 'discover.com' }, { type: 'domain', value: 'paypal.com' },
   { type: 'domain', value: 'venmo.com' }, { type: 'domain', value: 'cashapp.com' },
   { type: 'domain', value: 'zellepay.com' }, { type: 'domain', value: 'wise.com' },
-  // Auth paths (regex against pathname)
-  { type: 'path', value: '^/(login|signin|sign-in|signup|sign-up|auth|oauth|session)(/|$|\\?)' },
+  // Auth paths (regex against pathname). Matches common OAuth/OIDC/SAML endpoints
+  // used by Microsoft Entra, Okta, Auth0, Cognito, etc.
+  { type: 'path', value: '^/(login|signin|sign-in|signup|sign-up|auth|oauth|oauth2|openid|session|authorize)(/|$|\\?)' },
+  { type: 'path', value: '(^|/)(oauth2|openid-connect)/(authorize|token|userinfo|logout)' },
+  { type: 'path', value: '(^|/)common/oauth2/' },
+  { type: 'path', value: '(^|/)connect/(authorize|token|userinfo)' },
   { type: 'path', value: '^/account/(login|security|password)' },
   // Auth subdomain prefixes
   { type: 'subdomain', value: 'accounts' }, { type: 'subdomain', value: 'login' },
@@ -429,9 +439,15 @@ const SUMMARY_DENYLIST = [
   { type: 'domain', value: 'workday.com' }, { type: 'domain', value: 'adp.com' },
   { type: 'domain', value: 'gusto.com' }, { type: 'domain', value: 'rippling.com' },
   { type: 'domain', value: 'bamboohr.com' }, { type: 'domain', value: 'paylocity.com' },
-  // Insurance
+  // Insurance (auto / home / life)
   { type: 'domain', value: 'allstate.com' }, { type: 'domain', value: 'statefarm.com' },
   { type: 'domain', value: 'geico.com' }, { type: 'domain', value: 'progressive.com' },
+  { type: 'domain', value: 'libertymutual.com' }, { type: 'domain', value: 'nationwide.com' },
+  // Health insurers
+  { type: 'domain', value: 'cigna.com' }, { type: 'domain', value: 'aetna.com' },
+  { type: 'domain', value: 'uhc.com' }, { type: 'domain', value: 'anthem.com' },
+  { type: 'domain', value: 'kaiserpermanente.org' }, { type: 'domain', value: 'bcbs.com' },
+  { type: 'domain', value: 'humana.com' },
 ];
 
 function isSummaryDenylisted(url) {
@@ -441,7 +457,7 @@ function isSummaryDenylisted(url) {
   if (!host) return true;
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
   if (/\.(local|internal|corp|lan|home)$/.test(host)) return true;
-  if (/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return true;
+  if (/^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return true;
   for (const rule of SUMMARY_DENYLIST) {
     if (rule.type === 'domain') {
       if (host === rule.value || host.endsWith('.' + rule.value)) return true;
@@ -474,6 +490,11 @@ function isAutoSummaryAllowed(url) {
 
 // Cheap-and-fast model per provider for summaries. Independent of state.model
 // so summaries always run on the cheapest option regardless of user's chat model.
+// Priority ordered by actual cost-per-million-tokens (ascending): hub proxy
+// (routes to the cheapest upstream the server has), then direct-key Gemini
+// Flash Lite (~$0.04/M), then OpenAI 4o-mini (~$0.15/M), then Anthropic Haiku
+// 4.5 (~$1/M). We prefer hub proxy whenever configured so billing + logging
+// stays centralized.
 function getSummaryModelConfig() {
   const activeEndpoint = getActiveEndpoint();
   if (activeEndpoint) {
@@ -482,11 +503,11 @@ function getSummaryModelConfig() {
   if (state.geminiKey) {
     return { kind: 'gemini', model: 'gemini-3.1-flash-lite-preview', key: state.geminiKey };
   }
-  if (state.anthropicKey) {
-    return { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', key: state.anthropicKey };
-  }
   if (state.openaiKey) {
     return { kind: 'openai', model: 'gpt-4o-mini', key: state.openaiKey };
+  }
+  if (state.anthropicKey) {
+    return { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', key: state.anthropicKey };
   }
   return null;
 }
@@ -583,17 +604,43 @@ let autoSummaryCtrl = null;
 function triggerAutoSummary() {
   const url = state.pageCtx?.url || '';
 
-  // Privacy gate: denylist always blocks; allowlist must explicitly include host.
-  if (!isAutoSummaryAllowed(url)) {
+  // Privacy gate. Three cases: denylisted (silent), not allowlisted but safe
+  // (show opt-in button), allowlisted (run summary).
+  if (!url || isSummaryDenylisted(url)) {
     dom.autoSummaryCard.style.display = 'none';
+    if (dom.autoSummaryAllowRow) dom.autoSummaryAllowRow.style.display = 'none';
     return;
   }
+  if (!isSummaryAllowlisted(url)) {
+    // Surface a lightweight opt-in prompt rather than running silently nothing.
+    if (!getSummaryModelConfig()) {
+      dom.autoSummaryCard.style.display = 'none';
+      return;
+    }
+    let host = '';
+    try { host = new URL(url).hostname; } catch (_) {}
+    if (!host) {
+      dom.autoSummaryCard.style.display = 'none';
+      return;
+    }
+    dom.autoSummaryCard.style.display = 'block';
+    dom.autoSummaryContent.textContent = 'Auto-summary is off for this site. Add to allowlist to enable.';
+    if (dom.autoSummaryAllowRow && dom.autoSummaryAllowBtn) {
+      dom.autoSummaryAllowBtn.textContent = 'Allow auto-summary on ' + host;
+      dom.autoSummaryAllowBtn.dataset.host = host;
+      dom.autoSummaryAllowRow.style.display = 'block';
+    }
+    return;
+  }
+
+  // Allowlisted — proceed.
   if (!getSummaryModelConfig()) {
     dom.autoSummaryCard.style.display = 'none';
     return;
   }
 
   dom.autoSummaryCard.style.display = 'block';
+  if (dom.autoSummaryAllowRow) dom.autoSummaryAllowRow.style.display = 'none';
   dom.autoSummaryContent.textContent = 'Summarizing page…';
 
   setTimeout(async () => {
@@ -624,9 +671,12 @@ function triggerAutoSummary() {
       if (autoSummaryCtrl) autoSummaryCtrl.abort();
       autoSummaryCtrl = new AbortController();
       const summary = await summarizePage(state.pageCtx, autoSummaryCtrl.signal);
-      dom.autoSummaryContent.textContent = summary || 'Could not summarize this page.';
+      dom.autoSummaryContent.textContent = summary || 'Summary unavailable.';
     } catch (e) {
-      if (e.name !== 'AbortError') dom.autoSummaryCard.style.display = 'none';
+      if (e.name === 'AbortError') return;
+      // Keep the card visible so the user sees *why* it failed instead of silent hide.
+      const msg = (e && e.message) ? String(e.message).slice(0, 180) : 'Unknown error';
+      dom.autoSummaryContent.textContent = 'Summary unavailable: ' + msg;
     } finally {
       autoSummaryCtrl = null;
     }
@@ -721,10 +771,25 @@ function getAvailableModels() {
   return MODEL_LIST;
 }
 
+// Flagship IDs (from MODEL_LIST) shown in a "Recommended" section at the top
+// of the model menu. Kept small so users don't have to scroll past many to find
+// the ones they actually use.
+const RECOMMENDED_MODEL_IDS = [
+  'claude-opus-4-7',
+  'claude-sonnet-4-6',
+  'gpt-5.4',
+  'gemini-3.1-pro-preview',
+  'gemini-3.1-flash',
+  'grok-4.20',
+];
+
+let modelFilterText = '';
+
 function buildModelMenu() {
   dom.modelMenu.textContent = '';
-  const models = getAvailableModels();
-  if (models.length === 0) {
+  const allAvailable = getAvailableModels();
+
+  if (allAvailable.length === 0) {
     const hint = document.createElement('div');
     hint.className = 'menu-section-label';
     hint.textContent = 'Configure API keys in Settings';
@@ -738,20 +803,90 @@ function buildModelMenu() {
     dom.modelMenu.appendChild(hint);
     return;
   }
-  let lastGroup = '';
-  models.forEach(m => {
-    if (m.group !== lastGroup) {
-      if (lastGroup) {
+
+  // Search input (sticky at top)
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'menu-search-wrap';
+  searchWrap.style.cssText = 'padding:8px 10px;border-bottom:1px solid var(--border, #333);position:sticky;top:0;background:inherit;';
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search models…';
+  searchInput.value = modelFilterText;
+  searchInput.className = 'menu-search-input';
+  searchInput.style.cssText = 'width:100%;padding:6px 8px;border:1px solid var(--border, #333);border-radius:4px;background:var(--bg-input, #1a1a1a);color:var(--text, #eee);font-size:12px;outline:none;';
+  searchInput.addEventListener('input', (e) => {
+    modelFilterText = e.target.value;
+    renderMenuLists();
+    // Focus is preserved because we only rebuild the list container, not the input.
+  });
+  searchInput.addEventListener('click', (e) => e.stopPropagation());
+  searchWrap.appendChild(searchInput);
+  dom.modelMenu.appendChild(searchWrap);
+
+  const listWrap = document.createElement('div');
+  listWrap.className = 'menu-list-wrap';
+  dom.modelMenu.appendChild(listWrap);
+
+  function renderMenuLists() {
+    listWrap.textContent = '';
+    const query = modelFilterText.trim().toLowerCase();
+
+    const matches = (m) => {
+      if (!query) return true;
+      return m.id.toLowerCase().includes(query) ||
+             (m.name && m.name.toLowerCase().includes(query)) ||
+             (m.group && m.group.toLowerCase().includes(query));
+    };
+
+    const availableIds = new Set(allAvailable.map((m) => m.id));
+
+    // Recommended section — only show when user is not actively filtering, and
+    // only include recommended models that are actually available to this user.
+    if (!query) {
+      const recs = RECOMMENDED_MODEL_IDS
+        .map((id) => allAvailable.find((m) => m.id === id))
+        .filter(Boolean);
+      if (recs.length > 0) {
+        const label = document.createElement('div');
+        label.className = 'menu-section-label';
+        label.textContent = 'Recommended';
+        listWrap.appendChild(label);
+        recs.forEach((m) => listWrap.appendChild(renderModelItem(m)));
         const divider = document.createElement('div');
         divider.className = 'menu-divider';
-        dom.modelMenu.appendChild(divider);
+        listWrap.appendChild(divider);
       }
-      const label = document.createElement('div');
-      label.className = 'menu-section-label';
-      label.textContent = m.group;
-      dom.modelMenu.appendChild(label);
-      lastGroup = m.group;
     }
+
+    // Full list, grouped by provider, minus any active filter misses.
+    const filtered = allAvailable.filter(matches);
+    if (filtered.length === 0) {
+      const none = document.createElement('div');
+      none.className = 'menu-section-label';
+      none.textContent = 'No models match';
+      none.style.padding = '12px 10px';
+      listWrap.appendChild(none);
+      return;
+    }
+    let lastGroup = '';
+    filtered.forEach((m) => {
+      if (m.group !== lastGroup) {
+        if (lastGroup) {
+          const divider = document.createElement('div');
+          divider.className = 'menu-divider';
+          listWrap.appendChild(divider);
+        }
+        const label = document.createElement('div');
+        label.className = 'menu-section-label';
+        label.textContent = m.group;
+        listWrap.appendChild(label);
+        lastGroup = m.group;
+      }
+      listWrap.appendChild(renderModelItem(m));
+    });
+  }
+
+  function renderModelItem(m) {
     const btn = document.createElement('button');
     btn.className = 'menu-item model-item' + (m.id === state.model ? ' active' : '');
     btn.dataset.model = m.id;
@@ -760,8 +895,10 @@ function buildModelMenu() {
     nameSpan.className = 'menu-item-name';
     nameSpan.textContent = m.name;
     btn.appendChild(nameSpan);
-    dom.modelMenu.appendChild(btn);
-  });
+    return btn;
+  }
+
+  renderMenuLists();
 }
 
 // Listen for storage changes from settings page
@@ -1866,8 +2003,17 @@ dom.modelBtn.addEventListener('click', e => {
   const open = dom.modelMenu.style.display !== 'none';
   closeAllDropdowns();
   if (!open) {
+    // Reset filter on each open so the user always starts with the recommended
+    // section visible. Rebuild to clear any stale filter state.
+    modelFilterText = '';
+    buildModelMenu();
     dom.modelMenu.style.display = 'block';
     dom.modelBtn.setAttribute('aria-expanded', 'true');
+    // Defer focus so the dropdown is rendered first.
+    setTimeout(() => {
+      const input = dom.modelMenu.querySelector('.menu-search-input');
+      if (input) input.focus();
+    }, 0);
   }
 });
 
@@ -1949,6 +2095,21 @@ if (dom.contextAction) {
 }
 dom.contextDismiss.addEventListener('click', () => { hideContextBanner(); });
 dom.autoSummaryDismiss.addEventListener('click', () => { dom.autoSummaryCard.style.display = 'none'; });
+
+if (dom.autoSummaryAllowBtn) {
+  dom.autoSummaryAllowBtn.addEventListener('click', async () => {
+    const host = dom.autoSummaryAllowBtn.dataset.host || '';
+    if (!host) return;
+    if (!Array.isArray(state.summaryAllowlist)) state.summaryAllowlist = [];
+    if (!state.summaryAllowlist.includes(host)) {
+      state.summaryAllowlist.push(host);
+      await saveStorage({ summaryAllowlist: state.summaryAllowlist });
+    }
+    showToast('Allowlisted ' + host, 2000);
+    // Fire summary now that the host is allowed.
+    triggerAutoSummary();
+  });
+}
 dom.errorDismiss.addEventListener('click', () => showError(null));
 dom.selectionPillDismiss.addEventListener('click', e => {
   e.stopPropagation();
@@ -2411,6 +2572,18 @@ async function primePermsCache() {
   try {
     const all = await browser.permissions.getAll();
     (all.origins || []).forEach((o) => __permsCache.add(o));
+  } catch (_) { /* best-effort */ }
+  // Keep cache in sync with out-of-band grants/revokes (e.g. user toggling at
+  // about:addons while the sidebar is open). Without this, a revoke leaves a
+  // stale `true` and fetch() later fails with a network error instead of the
+  // cache miss triggering a re-request.
+  try {
+    if (browser.permissions.onAdded) {
+      browser.permissions.onAdded.addListener((p) => (p.origins || []).forEach((o) => __permsCache.add(o)));
+    }
+    if (browser.permissions.onRemoved) {
+      browser.permissions.onRemoved.addListener((p) => (p.origins || []).forEach((o) => __permsCache.delete(o)));
+    }
   } catch (_) { /* best-effort */ }
 }
 
