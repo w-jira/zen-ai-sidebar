@@ -92,6 +92,8 @@ const dom = {
   btnResetPrompt: $("btn-reset-prompt"),
   btnSaveProfile: $("btn-save-profile"),
   btnDeleteProfile: $("btn-delete-profile"),
+  summaryAllowlist: $("summaryAllowlist"),
+  summaryDenylistInfo: $("summaryDenylistInfo"),
   // Appearance
   themeSelect:    $("theme-select"),
   themeGroup:     $("theme-toggle-group"),
@@ -324,7 +326,7 @@ async function loadSettings() {
     "localEndpoint", "localProvider",
     "model", "systemPrompt", "maxTokens", "temperature",
     "theme", "fontSize", "profiles", "activeProfile",
-    "discoveredModels", "enabledModels",
+    "discoveredModels", "enabledModels", "summaryAllowlist",
   ]);
 
   dom.endpoint.value     = stored.endpoint     || "";
@@ -345,6 +347,10 @@ async function loadSettings() {
   dom.maxTokens.value    = stored.maxTokens    || 2048;
   dom.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
   dom.temperatureVal.textContent = parseFloat(dom.temperature.value).toFixed(2);
+  if (dom.summaryAllowlist) {
+    const list = Array.isArray(stored.summaryAllowlist) ? stored.summaryAllowlist : [];
+    dom.summaryAllowlist.value = list.join("\n");
+  }
 
   // Theme
   const theme = stored.theme || "dark";
@@ -399,6 +405,9 @@ dom.settingsForm.addEventListener("submit", async (e) => {
       maxTokens:    parseInt(dom.maxTokens.value, 10) || 2048,
       temperature:  isNaN(parseFloat(dom.temperature.value)) ? 0.7 : parseFloat(dom.temperature.value),
       theme:        dom.themeSelect.value,
+      summaryAllowlist: dom.summaryAllowlist
+        ? dom.summaryAllowlist.value.split(/\r?\n/).map((s) => s.trim().replace(/^https?:\/\//, "").split("/")[0].toLowerCase()).filter(Boolean)
+        : [],
     });
     showStatus(dom.saveStatus, "Saved", "ok");
   } catch (err) {
@@ -466,13 +475,25 @@ function originPatternOf(url) {
   }
 }
 
+// Cached granted origins. Primed at page load so ensureOriginAccess() can do a
+// synchronous has-it check — a prior `await` would break Firefox's user-gesture
+// context and silently fail permissions.request().
+const __permsCache = new Set();
+(async () => {
+  try {
+    const all = await browser.permissions.getAll();
+    (all.origins || []).forEach((o) => __permsCache.add(o));
+  } catch (_) { /* best-effort */ }
+})();
+
 async function ensureOriginAccess(url) {
   const pattern = originPatternOf(url);
   if (!pattern) return true;
+  if (__permsCache.has(pattern)) return true;
   try {
-    const has = await browser.permissions.contains({ origins: [pattern] });
-    if (has) return true;
-    return await browser.permissions.request({ origins: [pattern] });
+    const granted = await browser.permissions.request({ origins: [pattern] });
+    if (granted) __permsCache.add(pattern);
+    return granted;
   } catch (_) {
     return false;
   }
@@ -546,8 +567,9 @@ dom.btnTest.addEventListener("click", async () => {
     // Click handler counts as a user gesture so permissions.request() will work.
     const granted = await ensureOriginAccess(url);
     if (!granted) {
-      showStatus(dom.testResult, "\u2717 Site access denied \u2014 grant permission for " +
-        (originPatternOf(url) || "this origin") + " and retry", "err");
+      showStatus(dom.testResult, "\u2717 Site access denied for " +
+        (originPatternOf(url) || "this origin") +
+        ". If no prompt appeared, enable manually at about:addons \u2192 Zen AI Sidebar \u2192 Permissions, then retry.", "err");
       dom.btnTest.disabled = false;
       return;
     }

@@ -300,6 +300,37 @@
           </div>
         </div>
 
+        <div class="card">
+          <h2>Auto-Summary Privacy</h2>
+          <p class="section-desc">Auto-summary sends page content to your AI provider. It runs ONLY on allowlisted domains below. A builtin denylist always blocks sensitive sites (banks, email, healthcare, auth pages, etc.) even if accidentally allowlisted.</p>
+
+          <div class="field">
+            <label for="summaryAllowlist">Auto-summarize on these domains (one per line)</label>
+            <div class="input-hint">Exact domains or parent domains. E.g. <code>wikipedia.org</code> matches <code>en.wikipedia.org</code>. Leave blank to disable auto-summary everywhere.</div>
+            <textarea id="summaryAllowlist" name="summaryAllowlist" rows="6" placeholder="wikipedia.org&#10;news.ycombinator.com&#10;arxiv.org"></textarea>
+          </div>
+
+          <div class="field">
+            <label id="summaryDenylistInfo">Always blocked (builtin)</label>
+            <div class="input-hint">
+              Banks (Chase, Wells Fargo, BoA, Fidelity, Vanguard, Schwab, PayPal, Venmo, etc.) &middot;
+              Auth pages (<code>/login</code>, <code>/signin</code>, <code>accounts.*</code>, <code>login.*</code>, <code>sso.*</code>) &middot;
+              Email (Gmail, Outlook, Proton, Fastmail) &middot;
+              Healthcare (MyChart, Epic, Cerner, NIH) &middot;
+              Crypto (Coinbase, Binance, Kraken, MetaMask) &middot;
+              Password managers (1Password, Bitwarden, LastPass, Dashlane) &middot;
+              SSO (Okta, Auth0, OneLogin) &middot;
+              Tax (TurboTax, HRBlock, IRS) &middot;
+              Gov portals (SSA, VA, USA.gov) &middot;
+              Mental health (BetterHelp, Talkspace) &middot;
+              Dating (Match, Tinder, Bumble, Hinge) &middot;
+              HR/payroll (Workday, ADP, Gusto) &middot;
+              Insurance (Allstate, StateFarm, GEICO) &middot;
+              localhost and RFC1918 private IPs.
+            </div>
+          </div>
+        </div>
+
       </div><!-- /tab-behaviour -->
 
       <!-- TAB 4: APPEARANCE -->

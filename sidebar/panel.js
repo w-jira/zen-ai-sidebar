@@ -34,6 +34,7 @@ const state = {
   maxTokens: 0,
   temperature: -1,        // -1 = not set (omit from request)
   pendingPageAccessOrigin: '',
+  summaryAllowlist: [],   // hostnames where auto-summary may fire; empty = auto disabled everywhere
   templates: [
     { id: 't1', name: 'Code review', prompt: 'Review this code for bugs, performance issues, and best practices:' },
     { id: 't2', name: 'Email draft', prompt: 'Draft a professional email about:' },
@@ -124,6 +125,7 @@ const dom = {
 /* ═══════════════════════════ INIT ══════════════════════════════════ */
 async function init() {
   await loadStorage();
+  await primePermsCache();
   applyTheme();
   applyFontSize();
   buildModelMenu();
@@ -172,6 +174,7 @@ async function loadStorage() {
       'localEndpoint', 'discoveredModels', 'enabledModels', 'model', 'theme',
       'chatHistory', 'siteModels', 'singleTurn', 'streamingEnabled',
       'fontSize', 'responseLength', 'templates', 'systemPrompt', 'maxTokens', 'temperature',
+      'summaryAllowlist',
     ]);
     state.connectionMode = data.connectionMode || 'proxy';
     if (data.apiKey)          state.apiKey          = data.apiKey;
@@ -194,6 +197,7 @@ async function loadStorage() {
     if (data.systemPrompt)    state.systemPrompt    = data.systemPrompt;
     if (data.maxTokens)       state.maxTokens       = data.maxTokens;
     if (data.temperature !== undefined && data.temperature >= 0) state.temperature = data.temperature;
+    if (Array.isArray(data.summaryAllowlist)) state.summaryAllowlist = data.summaryAllowlist;
     dom.modelName.textContent = modelLabel(state.model);
   } catch (e) { console.warn('Storage load failed', e); }
 }
@@ -360,11 +364,231 @@ function handleTabInfo(tab) {
   }
 }
 
+/* ═══════════════════════════ PRIVACY: AUTO-SUMMARY GUARDS ══════════ */
+// Structured denylist. Denies auto-summary (which would leak page content to AI).
+// Categories: banking, auth, email, healthcare, crypto, password managers, SSO,
+// tax, gov portals, mental health, dating, HR, insurance. Matching is
+// hostname-exact or subdomain-of, or path regex.
+const SUMMARY_DENYLIST = [
+  // Banking / brokerage / payments
+  { type: 'domain', value: 'chase.com' }, { type: 'domain', value: 'wellsfargo.com' },
+  { type: 'domain', value: 'bankofamerica.com' }, { type: 'domain', value: 'citi.com' },
+  { type: 'domain', value: 'capitalone.com' }, { type: 'domain', value: 'ally.com' },
+  { type: 'domain', value: 'usbank.com' }, { type: 'domain', value: 'pnc.com' },
+  { type: 'domain', value: 'fidelity.com' }, { type: 'domain', value: 'vanguard.com' },
+  { type: 'domain', value: 'schwab.com' }, { type: 'domain', value: 'etrade.com' },
+  { type: 'domain', value: 'robinhood.com' }, { type: 'domain', value: 'americanexpress.com' },
+  { type: 'domain', value: 'discover.com' }, { type: 'domain', value: 'paypal.com' },
+  { type: 'domain', value: 'venmo.com' }, { type: 'domain', value: 'cashapp.com' },
+  { type: 'domain', value: 'zellepay.com' }, { type: 'domain', value: 'wise.com' },
+  // Auth paths (regex against pathname)
+  { type: 'path', value: '^/(login|signin|sign-in|signup|sign-up|auth|oauth|session)(/|$|\\?)' },
+  { type: 'path', value: '^/account/(login|security|password)' },
+  // Auth subdomain prefixes
+  { type: 'subdomain', value: 'accounts' }, { type: 'subdomain', value: 'login' },
+  { type: 'subdomain', value: 'auth' }, { type: 'subdomain', value: 'sso' },
+  { type: 'subdomain', value: 'id' },
+  // Email / messaging
+  { type: 'domain', value: 'mail.google.com' }, { type: 'domain', value: 'outlook.live.com' },
+  { type: 'domain', value: 'outlook.office.com' }, { type: 'domain', value: 'outlook.office365.com' },
+  { type: 'domain', value: 'proton.me' }, { type: 'domain', value: 'mail.proton.me' },
+  { type: 'domain', value: 'fastmail.com' }, { type: 'domain', value: 'tutanota.com' },
+  { type: 'domain', value: 'protonmail.com' },
+  // Healthcare / medical records
+  { type: 'subdomain', value: 'mychart' },
+  { type: 'domain', value: 'epic.com' }, { type: 'domain', value: 'cerner.com' },
+  { type: 'domain', value: 'mayo.edu' }, { type: 'domain', value: 'nih.gov' },
+  { type: 'domain', value: 'healthcare.gov' }, { type: 'domain', value: 'hhs.gov' },
+  // Crypto exchanges / wallets
+  { type: 'domain', value: 'coinbase.com' }, { type: 'domain', value: 'binance.com' },
+  { type: 'domain', value: 'kraken.com' }, { type: 'domain', value: 'metamask.io' },
+  { type: 'domain', value: 'blockchain.com' }, { type: 'domain', value: 'bitstamp.net' },
+  { type: 'domain', value: 'gemini.com' },
+  // Password managers
+  { type: 'domain', value: '1password.com' }, { type: 'domain', value: 'bitwarden.com' },
+  { type: 'domain', value: 'dashlane.com' }, { type: 'domain', value: 'lastpass.com' },
+  { type: 'domain', value: 'nordpass.com' }, { type: 'domain', value: 'keepersecurity.com' },
+  // SSO / identity providers
+  { type: 'domain', value: 'okta.com' }, { type: 'domain', value: 'onelogin.com' },
+  { type: 'domain', value: 'auth0.com' }, { type: 'domain', value: 'ping.com' },
+  { type: 'domain', value: 'pingidentity.com' },
+  // Tax
+  { type: 'domain', value: 'turbotax.intuit.com' }, { type: 'domain', value: 'hrblock.com' },
+  { type: 'domain', value: 'taxact.com' }, { type: 'domain', value: 'irs.gov' },
+  // Government portals
+  { type: 'domain', value: 'ssa.gov' }, { type: 'domain', value: 'usa.gov' },
+  { type: 'domain', value: 'va.gov' },
+  // Mental health / therapy
+  { type: 'domain', value: 'betterhelp.com' }, { type: 'domain', value: 'talkspace.com' },
+  { type: 'domain', value: 'headspace.com' }, { type: 'domain', value: 'calm.com' },
+  // Dating
+  { type: 'domain', value: 'match.com' }, { type: 'domain', value: 'tinder.com' },
+  { type: 'domain', value: 'bumble.com' }, { type: 'domain', value: 'hinge.co' },
+  { type: 'domain', value: 'okcupid.com' },
+  // HR / payroll / benefits
+  { type: 'domain', value: 'workday.com' }, { type: 'domain', value: 'adp.com' },
+  { type: 'domain', value: 'gusto.com' }, { type: 'domain', value: 'rippling.com' },
+  { type: 'domain', value: 'bamboohr.com' }, { type: 'domain', value: 'paylocity.com' },
+  // Insurance
+  { type: 'domain', value: 'allstate.com' }, { type: 'domain', value: 'statefarm.com' },
+  { type: 'domain', value: 'geico.com' }, { type: 'domain', value: 'progressive.com' },
+];
+
+function isSummaryDenylisted(url) {
+  let u; try { u = new URL(url); } catch (_) { return true; } // fail closed
+  const host = (u.hostname || '').toLowerCase();
+  const path = u.pathname || '/';
+  if (!host) return true;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (/\.(local|internal|corp|lan|home)$/.test(host)) return true;
+  if (/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return true;
+  for (const rule of SUMMARY_DENYLIST) {
+    if (rule.type === 'domain') {
+      if (host === rule.value || host.endsWith('.' + rule.value)) return true;
+    } else if (rule.type === 'subdomain') {
+      if (host === rule.value || host.startsWith(rule.value + '.')) return true;
+    } else if (rule.type === 'path') {
+      try { if (new RegExp(rule.value, 'i').test(path)) return true; } catch (_) {}
+    }
+  }
+  return false;
+}
+
+function isSummaryAllowlisted(url) {
+  if (!Array.isArray(state.summaryAllowlist) || state.summaryAllowlist.length === 0) return false;
+  let u; try { u = new URL(url); } catch (_) { return false; }
+  const host = (u.hostname || '').toLowerCase();
+  if (!host) return false;
+  return state.summaryAllowlist.some((entry) => {
+    const v = String(entry || '').toLowerCase().trim().replace(/^https?:\/\//, '').split('/')[0];
+    if (!v) return false;
+    return host === v || host.endsWith('.' + v);
+  });
+}
+
+function isAutoSummaryAllowed(url) {
+  if (!url) return false;
+  if (isSummaryDenylisted(url)) return false;
+  return isSummaryAllowlisted(url);
+}
+
+// Cheap-and-fast model per provider for summaries. Independent of state.model
+// so summaries always run on the cheapest option regardless of user's chat model.
+function getSummaryModelConfig() {
+  const activeEndpoint = getActiveEndpoint();
+  if (activeEndpoint) {
+    return { kind: 'openai-compat', model: 'gemini-3.1-flash-lite', endpoint: activeEndpoint };
+  }
+  if (state.geminiKey) {
+    return { kind: 'gemini', model: 'gemini-3.1-flash-lite-preview', key: state.geminiKey };
+  }
+  if (state.anthropicKey) {
+    return { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', key: state.anthropicKey };
+  }
+  if (state.openaiKey) {
+    return { kind: 'openai', model: 'gpt-4o-mini', key: state.openaiKey };
+  }
+  return null;
+}
+
+// Self-contained summary call. Handles both JSON and SSE responses (the hub proxy
+// currently streams even when stream:false — fixed server-side in v1.5.0).
+async function summarizePage(pageCtx, signal) {
+  const cfg = getSummaryModelConfig();
+  if (!cfg) throw new Error('No credentials configured for summary');
+
+  const ctxText = `Title: ${pageCtx.title || ''}\nURL: ${pageCtx.url || ''}\n\n${pageCtx.content || ''}`.slice(0, 12000);
+  const sysMsg = 'You are a concise web page summarizer. Respond in 2-3 plain sentences. No preamble.';
+  const userMsg = `Summarize this page:\n\n${ctxText}`;
+
+  let targetUrl, headers, body;
+  if (cfg.kind === 'openai-compat' || cfg.kind === 'openai') {
+    const base = (cfg.endpoint || 'https://api.openai.com').replace(/\/+$/, '');
+    targetUrl = base.endsWith('/chat/completions') ? base : base + '/chat/completions';
+    headers = { 'Content-Type': 'application/json' };
+    if (cfg.kind === 'openai-compat' && state.connectionMode === 'proxy' && state.apiKey) {
+      headers['Authorization'] = 'Bearer ' + state.apiKey;
+    } else if (cfg.kind === 'openai') {
+      headers['Authorization'] = 'Bearer ' + cfg.key;
+    }
+    body = {
+      model: cfg.model,
+      messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: userMsg }],
+      stream: false,
+      max_tokens: 300,
+    };
+  } else if (cfg.kind === 'gemini') {
+    targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${encodeURIComponent(cfg.key)}`;
+    headers = { 'Content-Type': 'application/json' };
+    body = {
+      contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+      systemInstruction: { parts: [{ text: sysMsg }] },
+      generationConfig: { maxOutputTokens: 300 },
+    };
+  } else if (cfg.kind === 'anthropic') {
+    targetUrl = 'https://api.anthropic.com/v1/messages';
+    headers = {
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'x-api-key': cfg.key,
+    };
+    body = {
+      model: cfg.model,
+      system: sysMsg,
+      messages: [{ role: 'user', content: userMsg }],
+      max_tokens: 300,
+      stream: false,
+    };
+  }
+
+  const resp = await fetch(targetUrl, { method: 'POST', headers, body: JSON.stringify(body), signal });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`Summary API ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+  const text = await resp.text();
+
+  // SSE fallback — hub proxy streams even when stream:false is requested.
+  if (contentType.includes('event-stream') || text.trimStart().startsWith('data:')) {
+    let combined = '';
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === '[DONE]') continue;
+      try {
+        const j = JSON.parse(data);
+        const delta = j.choices && j.choices[0] && (j.choices[0].delta?.content || j.choices[0].message?.content);
+        if (delta) combined += delta;
+      } catch (_) { /* skip malformed */ }
+    }
+    return combined.trim();
+  }
+
+  try {
+    const j = JSON.parse(text);
+    if (cfg.kind === 'anthropic') return (j.content?.[0]?.text || '').trim();
+    if (cfg.kind === 'gemini') return (j.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    return (j.choices?.[0]?.message?.content || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
 /* ═══════════════════════════ AUTO-SUMMARY ══════════════════════════ */
-let autoSummaryCtrl = null;  // track auto-summary so it can be cancelled
+let autoSummaryCtrl = null;
 
 function triggerAutoSummary() {
-  if (!getActiveEndpoint() && needsCustomEndpoint(state.model)) {
+  const url = state.pageCtx?.url || '';
+
+  // Privacy gate: denylist always blocks; allowlist must explicitly include host.
+  if (!isAutoSummaryAllowed(url)) {
+    dom.autoSummaryCard.style.display = 'none';
+    return;
+  }
+  if (!getSummaryModelConfig()) {
     dom.autoSummaryCard.style.display = 'none';
     return;
   }
@@ -378,38 +602,28 @@ function triggerAutoSummary() {
       return;
     }
     try {
-      // Auto-summary fires without a user gesture, so we can't *request* host
-      // permission here — just check and bail cleanly if the target origin
-      // hasn't been granted yet. The user will hit the gesture path on their
-      // first Send or Test Connection, which prompts and unblocks this path.
-      const targetUrl = getApiEndpoint(false);
-      const pattern = originPatternOf(targetUrl);
-      if (pattern) {
-        const hasAccess = await browser.permissions.contains({ origins: [pattern] }).catch(() => false);
-        if (!hasAccess) {
+      const cfg = getSummaryModelConfig();
+      let targetOrigin = '';
+      if (cfg.kind === 'openai-compat' || cfg.kind === 'openai') {
+        const base = (cfg.endpoint || 'https://api.openai.com').replace(/\/+$/, '');
+        targetOrigin = originPatternOf(base);
+      } else if (cfg.kind === 'gemini') {
+        targetOrigin = 'https://generativelanguage.googleapis.com/*';
+      } else if (cfg.kind === 'anthropic') {
+        targetOrigin = 'https://api.anthropic.com/*';
+      }
+      if (targetOrigin && !__permsCache.has(targetOrigin)) {
+        const has = await browser.permissions.contains({ origins: [targetOrigin] }).catch(() => false);
+        if (!has) {
           dom.autoSummaryCard.style.display = 'none';
           return;
         }
+        __permsCache.add(targetOrigin);
       }
-      // Cancel any previous auto-summary in flight
+
       if (autoSummaryCtrl) autoSummaryCtrl.abort();
       autoSummaryCtrl = new AbortController();
-      const resp = await fetch(targetUrl, {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify(buildApiBody([
-          { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: 'Please give me a brief 2-3 sentence summary of this page.' },
-        ], false)),
-        signal: autoSummaryCtrl.signal,
-      });
-      if (!resp.ok) throw new Error('API error');
-      const data = await resp.json();
-      const provider = providerOf(state.model);
-      let summary;
-      if (provider === 'anthropic') summary = data.content?.[0]?.text || '';
-      else if (provider === 'gemini') summary = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      else summary = data.choices?.[0]?.message?.content || '';
+      const summary = await summarizePage(state.pageCtx, autoSummaryCtrl.signal);
       dom.autoSummaryContent.textContent = summary || 'Could not summarize this page.';
     } catch (e) {
       if (e.name !== 'AbortError') dom.autoSummaryCard.style.display = 'none';
@@ -934,7 +1148,7 @@ async function sendMessage(content) {
   const targetUrl = getApiEndpoint(false);
   const granted = await ensureOriginAccess(targetUrl);
   if (!granted) {
-    showError(`Site access denied for ${originPatternOf(targetUrl) || 'target origin'}. Grant permission and try again.`);
+    showError(`Site access denied for ${originPatternOf(targetUrl) || 'target origin'}. If no prompt appeared, enable manually at about:addons → Zen AI Sidebar → Permissions.`);
     return;
   }
 
@@ -1969,7 +2183,7 @@ if (wizardNext2) {
         if (!ep) throw new Error('Enter a proxy URL');
         // Request host permission for the custom proxy origin from this user gesture
         if (!(await ensureOriginAccess(ep))) {
-          throw new Error('Site access denied for ' + ep + ' — retry and allow the permission prompt');
+          throw new Error('Site access denied for ' + ep + '. If no prompt appeared, enable it manually: about:addons → Zen AI Sidebar → Permissions → toggle on the host permission, then retry.');
         }
         const headers = {};
         if (key) headers['Authorization'] = 'Bearer ' + key;
@@ -2024,7 +2238,7 @@ if (wizardNext2) {
         ep = ep.replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]).replace(/\/+$/, '');
         // Custom local endpoint (non-localhost) requires runtime permission
         if (!(await ensureOriginAccess(ep))) {
-          throw new Error('Site access denied for ' + ep + ' — retry and allow the permission prompt');
+          throw new Error('Site access denied for ' + ep + '. If no prompt appeared, enable it manually: about:addons → Zen AI Sidebar → Permissions → toggle on the host permission, then retry.');
         }
         if (ep.includes('11434')) {
           try {
@@ -2179,8 +2393,6 @@ dom.setupSaveBtn.addEventListener('click', async () => {
 // runtime request from a user gesture (send click, wizard test click).
 function originPatternOf(url) {
   try {
-    // Collapse duplicated protocol prefixes ("https://https://...") that can
-    // come from paste-on-prefill before we hand the URL to the URL constructor.
     const clean = String(url || '').replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]);
     const parsed = new URL(clean);
     if (!/^https?:$/.test(parsed.protocol)) return null;
@@ -2190,13 +2402,27 @@ function originPatternOf(url) {
   }
 }
 
+// Cached known-granted origins. Primed at boot from permissions.getAll() so
+// ensureOriginAccess() can do a synchronous has-it check — a prior `await`
+// would break Firefox's user-gesture context and silently fail permissions.request().
+const __permsCache = new Set();
+
+async function primePermsCache() {
+  try {
+    const all = await browser.permissions.getAll();
+    (all.origins || []).forEach((o) => __permsCache.add(o));
+  } catch (_) { /* best-effort */ }
+}
+
 async function ensureOriginAccess(url) {
   const pattern = originPatternOf(url);
   if (!pattern) return true;
+  // Synchronous cache check — preserves user-gesture context for request() below.
+  if (__permsCache.has(pattern)) return true;
   try {
-    const has = await browser.permissions.contains({ origins: [pattern] });
-    if (has) return true;
-    return await browser.permissions.request({ origins: [pattern] });
+    const granted = await browser.permissions.request({ origins: [pattern] });
+    if (granted) __permsCache.add(pattern);
+    return granted;
   } catch (_) {
     return false;
   }
