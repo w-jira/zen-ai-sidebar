@@ -25,6 +25,7 @@ const MODEL_LIST = [
   { id: "o4-mini",           name: "o4-mini",             group: "OpenAI" },
   { id: "gpt-4o",            name: "GPT-4o",              group: "OpenAI" },
   { id: "gpt-4o-mini",       name: "GPT-4o mini",         group: "OpenAI" },
+  { id: "claude-opus-4-7",   name: "Claude Opus 4.7",     group: "Anthropic" },
   { id: "claude-opus-4-6",   name: "Claude Opus 4.6",     group: "Anthropic" },
   { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6",   group: "Anthropic" },
   { id: "claude-haiku-4-5",  name: "Claude Haiku 4.5",    group: "Anthropic" },
@@ -759,7 +760,7 @@ dom.fontSizeGroup.addEventListener("click", async (e) => {
 // Popular models to pre-enable after discovery
 const POPULAR_MODELS = new Set([
   "gpt-5.4", "gpt-5.4-mini", "gpt-4o",
-  "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
+  "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
   "gemini-3.1-pro-preview", "gemini-3.1-flash", "gemini-3.1-flash-lite",
   "o3", "o4-mini",
 ]);
@@ -811,7 +812,7 @@ async function discoverDirectModels(openaiKey, anthropicKey, geminiKey) {
 
   // Anthropic: hardcoded (no models endpoint)
   if (anthropicKey) {
-    ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"].forEach((id) => {
+    ["claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"].forEach((id) => {
       models.push({ id, name: modelDisplayName(id), provider: "Anthropic" });
     });
   }
