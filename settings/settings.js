@@ -158,23 +158,22 @@ function syncModeToggle(mode) {
 dom.modeToggle.addEventListener("click", async (e) => {
   const btn = e.target.closest(".toggle-btn");
   if (!btn) return;
-  // Persist the currently visible tab's values before switching so nothing is lost
-  // if the user typed but never blurred the field.
-  const snapshot = {};
-  if (dom.endpoint && dom.endpoint.value.trim()) {
-    snapshot.endpoint = dom.endpoint.value.trim().replace(/\/+$/, "");
-  }
-  if (dom.apiKey && dom.apiKey.value.trim()) {
-    snapshot.apiKey = dom.apiKey.value.trim();
-  }
-  if (dom.localEndpoint && dom.localEndpoint.value.trim()) {
-    snapshot.localEndpoint = dom.localEndpoint.value.trim().replace(/\/+$/, "");
-  }
-  if (Object.keys(snapshot).length) await browser.storage.local.set(snapshot);
+  const snapshot = {
+    endpoint: dom.endpoint ? dom.endpoint.value.trim().replace(/\/+$/, "") : "",
+    apiKey: dom.apiKey ? dom.apiKey.value.trim() : "",
+    openaiKey: dom.openaiKey ? dom.openaiKey.value.trim() : "",
+    anthropicKey: dom.anthropicKey ? dom.anthropicKey.value.trim() : "",
+    geminiKey: dom.geminiKey ? dom.geminiKey.value.trim() : "",
+    localEndpoint: dom.localEndpoint ? dom.localEndpoint.value.trim().replace(/\/+$/, "") : "",
+  };
+  await browser.storage.local.set(snapshot);
 
   const mode = btn.dataset.value;
   syncModeToggle(mode);
   await browser.storage.local.set({ connectionMode: mode });
+  if (mode === "proxy") buildModelSelect(dom.model.value);
+  if (mode === "direct" && dom.modelDirect) buildFilteredModelSelect(dom.modelDirect, dom.modelDirect.value || dom.model.value, "direct");
+  if (mode === "local" && dom.modelLocal) buildFilteredModelSelect(dom.modelLocal, dom.modelLocal.value || dom.model.value, "local");
 });
 
 // Local provider toggle (Ollama / LM Studio / Custom)
@@ -195,11 +194,18 @@ if (dom.localProviderToggle) {
 
 /* ═══════════════════════════ MODEL SELECT BUILDER ══════════════════ */
 function buildModelSelect(selectedId) {
+  const useDiscovered = connectionMode === "proxy" && discoveredModels.length > 0;
+  const sourceModels = useDiscovered
+    ? discoveredModels
+        .filter((m) => enabledModels.length === 0 || enabledModels.includes(m.id))
+        .map((m) => ({ id: m.id, name: m.name, group: m.provider || "Other" }))
+    : MODEL_LIST;
+
   dom.model.textContent = "";
   let lastGroup = "";
   let optgroup;
   let found = false;
-  MODEL_LIST.forEach((m) => {
+  sourceModels.forEach((m) => {
     if (m.group !== lastGroup) {
       optgroup = document.createElement("optgroup");
       optgroup.label = m.group;
@@ -327,6 +333,10 @@ async function loadSettings() {
   dom.anthropicKey.value = stored.anthropicKey || "";
   dom.geminiKey.value    = stored.geminiKey    || "";
   if (dom.localEndpoint) dom.localEndpoint.value = stored.localEndpoint || "http://localhost:11434/v1";
+  connectionMode = stored.connectionMode || inferConnectionMode(stored);
+  discoveredModels = stored.discoveredModels || [];
+  enabledModels = stored.enabledModels || [];
+  syncModeToggle(connectionMode);
   buildModelSelect(stored.model || "gpt-4o");
   // Also build direct/local model selects
   if (dom.modelDirect) buildFilteredModelSelect(dom.modelDirect, stored.model || "gpt-4o", "direct");
@@ -335,10 +345,6 @@ async function loadSettings() {
   dom.maxTokens.value    = stored.maxTokens    || 2048;
   dom.temperature.value  = stored.temperature !== undefined ? stored.temperature : 0.7;
   dom.temperatureVal.textContent = parseFloat(dom.temperature.value).toFixed(2);
-
-  // Connection mode
-  connectionMode = stored.connectionMode || inferConnectionMode(stored);
-  syncModeToggle(connectionMode);
 
   // Theme
   const theme = stored.theme || "dark";
@@ -356,9 +362,6 @@ async function loadSettings() {
   // Highlight matching preset card
   highlightPreset(stored.endpoint || "");
 
-  // Load discovered models into Models tab
-  discoveredModels = stored.discoveredModels || [];
-  enabledModels = stored.enabledModels || [];
 }
 
 function normalizeFontSize(val) {
@@ -925,7 +928,7 @@ async function runDiscovery() {
   if (mode === "proxy") {
     return discoverProxyModels(stored.endpoint || "", stored.apiKey || "");
   } else if (mode === "direct") {
-    return discoverDirectModels(stored.openaiKey || stored.apiKey || "", stored.anthropicKey || "", stored.geminiKey || "");
+    return discoverDirectModels(stored.openaiKey || "", stored.anthropicKey || "", stored.geminiKey || "");
   } else if (mode === "local") {
     return discoverLocalModels(stored.localEndpoint || "http://localhost:11434/v1");
   }
@@ -1005,6 +1008,7 @@ function renderModelToggles() {
           enabledModels = enabledModels.filter((id) => id !== m.id);
         }
         await browser.storage.local.set({ enabledModels });
+        if (connectionMode === "proxy") buildModelSelect(dom.model.value);
       });
 
       const slider = document.createElement("span");
@@ -1094,6 +1098,7 @@ if (dom.btnRedetect) {
       await browser.storage.local.set({ discoveredModels, enabledModels });
       renderModelToggles();
       dom.btnRedetect.textContent = "\u2713 " + models.length + " found";
+      if (connectionMode === "proxy") buildModelSelect(dom.model.value);
       setTimeout(() => { dom.btnRedetect.textContent = "Re-detect Models"; }, 3000);
     } catch (err) {
       dom.btnRedetect.textContent = "\u2717 " + err.message;
@@ -1110,6 +1115,7 @@ if (dom.btnEnableAll) {
     enabledModels = discoveredModels.map((m) => m.id);
     await browser.storage.local.set({ enabledModels });
     renderModelToggles();
+    if (connectionMode === "proxy") buildModelSelect(dom.model.value);
   });
 }
 if (dom.btnDisableAll) {
@@ -1117,6 +1123,7 @@ if (dom.btnDisableAll) {
     enabledModels = [];
     await browser.storage.local.set({ enabledModels });
     renderModelToggles();
+    if (connectionMode === "proxy") buildModelSelect(dom.model.value);
   });
 }
 
@@ -1135,6 +1142,7 @@ dom.btnAddModel.addEventListener("click", async () => {
   dom.newModelLabel.value = "";
   dom.newModelId.value = "";
   renderModelToggles();
+  if (connectionMode === "proxy") buildModelSelect(dom.model.value);
 });
 
 dom.quickAddChips.addEventListener("click", (e) => {

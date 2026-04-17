@@ -33,6 +33,7 @@ const state = {
   systemPrompt: '',
   maxTokens: 0,
   temperature: -1,        // -1 = not set (omit from request)
+  pendingPageAccessOrigin: '',
   templates: [
     { id: 't1', name: 'Code review', prompt: 'Review this code for bugs, performance issues, and best practices:' },
     { id: 't2', name: 'Email draft', prompt: 'Draft a professional email about:' },
@@ -64,6 +65,7 @@ const dom = {
   themeIconSun:      $('theme-icon-sun'),
   contextBanner:     $('context-banner'),
   contextBannerText: $('context-banner-text'),
+  contextAction:     $('context-action'),
   contextDismiss:    $('context-dismiss'),
   autoSummaryCard:   $('auto-summary-card'),
   autoSummaryContent:$('auto-summary-content'),
@@ -130,8 +132,10 @@ async function init() {
   updateFooterPills();
   updatePinUI();
 
-  const hasCredential = state.apiKey || state.openaiKey || state.anthropicKey ||
-                        state.geminiKey || state.endpoint || state.connectionMode === 'local';
+  const hasCredential =
+    (state.connectionMode === 'local') ||
+    (state.connectionMode === 'proxy' && Boolean(state.endpoint || state.apiKey)) ||
+    (state.connectionMode === 'direct' && Boolean(state.openaiKey || state.anthropicKey || state.geminiKey));
   if (!hasCredential) {
     dom.setupOverlay.style.display = 'flex';
     wizardGoTo(1); // ensure only step 1 is visible
@@ -176,10 +180,6 @@ async function loadStorage() {
     if (data.geminiKey)       state.geminiKey       = data.geminiKey;
     if (data.endpoint)        state.endpoint        = data.endpoint;
     if (data.localEndpoint)   state.localEndpoint   = data.localEndpoint;
-    // In local mode, use localEndpoint as the active endpoint
-    if (state.connectionMode === 'local' && state.localEndpoint) {
-      state.endpoint = state.localEndpoint;
-    }
     if (data.discoveredModels) state.discoveredModels = data.discoveredModels;
     if (data.enabledModels)    state.enabledModels    = data.enabledModels;
     if (data.model)           state.model           = data.model;
@@ -204,12 +204,79 @@ async function saveStorage(keys = {}) {
   } catch (e) { console.warn('Storage save failed', e); }
 }
 
+function getActiveEndpoint() {
+  if (state.connectionMode === 'local') return (state.localEndpoint || '').replace(/\/+$/, '');
+  if (state.connectionMode === 'proxy') return (state.endpoint || '').replace(/\/+$/, '');
+  return '';
+}
+
+function resetContextBannerAction() {
+  state.pendingPageAccessOrigin = '';
+  if (!dom.contextAction) return;
+  dom.contextAction.style.display = 'none';
+  dom.contextAction.disabled = false;
+  dom.contextAction.textContent = 'Enable Access';
+}
+
+function showContextBanner(text, options = {}) {
+  dom.contextBannerText.textContent = text;
+  resetContextBannerAction();
+  if (options.actionLabel && dom.contextAction) {
+    state.pendingPageAccessOrigin = options.origin || '';
+    dom.contextAction.textContent = options.actionLabel;
+    dom.contextAction.style.display = 'inline-flex';
+  }
+  dom.contextBanner.style.display = 'flex';
+}
+
+function hideContextBanner() {
+  resetContextBannerAction();
+  dom.contextBanner.style.display = 'none';
+}
+
+async function requestCurrentSiteAccess() {
+  const origin = state.pendingPageAccessOrigin;
+  if (!origin || !dom.contextAction) return;
+
+  dom.contextAction.disabled = true;
+  dom.contextAction.textContent = 'Enabling…';
+
+  try {
+    const granted = await browser.permissions.request({ origins: [origin] });
+    if (!granted) {
+      dom.contextAction.disabled = false;
+      dom.contextAction.textContent = 'Enable Access';
+      showContextBanner('Site access is required before Zen can read this page.', {
+        actionLabel: 'Enable Access',
+        origin,
+      });
+      return;
+    }
+
+    showContextBanner('Site access enabled. Loading page context…');
+    browser.runtime.sendMessage({ type: 'SIDEBAR_READY' }).catch(() => {});
+  } catch (_) {
+    dom.contextAction.disabled = false;
+    dom.contextAction.textContent = 'Enable Access';
+    showContextBanner('Could not request site access. Try again on this page.', {
+      actionLabel: 'Enable Access',
+      origin,
+    });
+  }
+}
+
 /* ═══════════════════════════ MESSAGES FROM CONTENT SCRIPT ═════════ */
 function onMessage(msg) {
   if (!msg || !msg.type) return;
   switch (msg.type) {
     case 'PAGE_CONTENT_RELAY':
       handlePageContent(msg);
+      break;
+    case 'PAGE_ACCESS_REQUIRED':
+      handlePageAccessRequired(msg);
+      break;
+    case 'PAGE_ACCESS_UNAVAILABLE':
+      handlePageAccessUnavailable();
       break;
     case 'SELECTION_RELAY':
       handleSelection(msg.text);
@@ -222,13 +289,25 @@ function onMessage(msg) {
 
 function handlePageContent(msg) {
   state.pageCtx = { url: msg.url || '', title: msg.title || '', content: msg.content || '' };
-  dom.contextBannerText.textContent = msg.title ? `📄 ${msg.title.slice(0, 50)}` : 'Page context loaded';
-  dom.contextBanner.style.display = 'flex';
+  showContextBanner(msg.title ? `📄 ${msg.title.slice(0, 50)}` : 'Page context loaded');
 
   // Auto-summarize if no messages yet
   if (state.messages.length === 0) {
     triggerAutoSummary();
   }
+}
+
+function handlePageAccessRequired(msg) {
+  state.pageCtx = { url: '', title: '', content: '' };
+  showContextBanner('Enable access for this site to use page summaries and selected text.', {
+    actionLabel: 'Enable Access',
+    origin: msg.origin || '',
+  });
+}
+
+function handlePageAccessUnavailable() {
+  state.pageCtx = { url: '', title: '', content: '' };
+  showContextBanner('Page context is unavailable on this page.');
 }
 
 function handleSelection(text) {
@@ -242,7 +321,7 @@ function handleSelection(text) {
 function handleTabChanged(msg) {
   clearMessages();
   state.pageCtx = { url: '', title: '', content: '' };
-  dom.contextBanner.style.display = 'none';
+  hideContextBanner();
   dom.autoSummaryCard.style.display = 'none';
   showToast('New page — context updated', 2000);
 
@@ -285,6 +364,11 @@ function handleTabInfo(tab) {
 let autoSummaryCtrl = null;  // track auto-summary so it can be cancelled
 
 function triggerAutoSummary() {
+  if (!getActiveEndpoint() && needsCustomEndpoint(state.model)) {
+    dom.autoSummaryCard.style.display = 'none';
+    return;
+  }
+
   dom.autoSummaryCard.style.display = 'block';
   dom.autoSummaryContent.textContent = 'Summarizing page…';
 
@@ -387,13 +471,20 @@ function getAvailableModels() {
   // If we have discovered models, use enabled selections (or empty if all disabled)
   if (state.discoveredModels.length > 0) {
     return state.discoveredModels
+      .filter(m => {
+        if (state.connectionMode !== 'direct') return true;
+        if (m.provider === 'Anthropic' || m.id.startsWith('claude')) return Boolean(state.anthropicKey);
+        if (m.provider === 'Google' && m.id.startsWith('gemini')) return Boolean(state.geminiKey);
+        if (needsCustomEndpoint(m.id)) return Boolean(getActiveEndpoint());
+        return Boolean(state.openaiKey);
+      })
       .filter(m => state.enabledModels.includes(m.id))
       .map(m => ({ id: m.id, name: m.name, group: m.provider || 'Other' }));
   }
   // Direct mode without discovery: filter hardcoded list by configured keys
   if (state.connectionMode === 'direct') {
     return MODEL_LIST.filter(m => {
-      if (m.group === 'OpenAI' && (state.apiKey || state.openaiKey)) return true;
+      if (m.group === 'OpenAI' && state.openaiKey) return true;
       if (m.group === 'Anthropic' && state.anthropicKey) return true;
       if (m.group === 'Google' && state.geminiKey) return true;
       return false;
@@ -459,7 +550,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (changes.openaiKey)       { state.openaiKey = changes.openaiKey.newValue || ''; buildModelMenu(); }
   if (changes.anthropicKey)    { state.anthropicKey = changes.anthropicKey.newValue || ''; buildModelMenu(); }
   if (changes.geminiKey)       { state.geminiKey = changes.geminiKey.newValue || ''; buildModelMenu(); }
-  if (changes.endpoint)        state.endpoint        = changes.endpoint.newValue || '';
+  if (changes.endpoint)        { state.endpoint = changes.endpoint.newValue || ''; buildModelMenu(); }
   if (changes.discoveredModels) { state.discoveredModels = changes.discoveredModels.newValue || []; buildModelMenu(); }
   if (changes.enabledModels) {
     state.enabledModels = changes.enabledModels.newValue || [];
@@ -471,7 +562,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   }
   if (changes.localEndpoint) {
     state.localEndpoint = changes.localEndpoint.newValue || '';
-    if (state.connectionMode === 'local') state.endpoint = state.localEndpoint;
+    buildModelMenu();
   }
   if (changes.model) {
     state.model = changes.model.newValue || 'gpt-4o';
@@ -707,7 +798,11 @@ function renderMarkdown(text) {
   text = text.replace(/\*\*([^*]+)\*\*/g,     '<strong>$1</strong>');
   text = text.replace(/\*([^*\n]+)\*/g,        '<em>$1</em>');
   // Links — [text](url)
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    const safeHref = sanitizeLinkHref(url);
+    if (!safeHref) return label;
+    return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow">${label}</a>`;
+  });
   // Unordered lists
   text = text.replace(/^[-*] (.+)$/gm, '<li class="ul">$1</li>');
   // Ordered lists
@@ -740,6 +835,25 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function decodeHtmlEntities(text) {
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = text;
+  return textarea.value;
+}
+
+function sanitizeLinkHref(rawUrl) {
+  const decoded = decodeHtmlEntities(String(rawUrl || '').trim());
+  try {
+    const parsed = new URL(decoded);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return parsed.toString();
+    }
+  } catch (_) {
+    return '';
+  }
+  return '';
 }
 
 // Strip potential API key patterns from error messages before display
@@ -785,7 +899,7 @@ async function sendMessage(content) {
   dom.autoSummaryCard.style.display = 'none';
 
   // Check if model needs a custom endpoint
-  if (!state.endpoint && needsCustomEndpoint(state.model)) {
+  if (!getActiveEndpoint() && needsCustomEndpoint(state.model)) {
     showError(`${modelLabel(state.model)} requires a custom endpoint (e.g. OpenRouter). Set one in Settings.`);
     return;
   }
@@ -1001,13 +1115,11 @@ async function callAI(history, streaming = false) {
 /* ═══════════════════════════ API LAYER ════════════════════════════ */
 function providerOf(model) {
   if (!model) return 'openai';
-  // If user has a custom endpoint set, always use OpenAI-compat format
-  if (state.endpoint) return 'openai-compat';
+  if (getActiveEndpoint()) return 'openai-compat';
   if (model.startsWith('claude'))    return 'anthropic';
   if (model.startsWith('gemini'))    return 'gemini';
-  if (model.startsWith('grok'))      return 'openai-compat'; // xAI uses OpenAI-compat
-  // Meta, DeepSeek, Mistral etc. need a custom endpoint (e.g. OpenRouter)
-  // but default to OpenAI-compat format so they work with any proxy
+  if (model.startsWith('grok'))      return 'openai-compat';
+  if (needsCustomEndpoint(model))    return 'openai-compat';
   return 'openai';
 }
 
@@ -1021,15 +1133,15 @@ function needsCustomEndpoint(model) {
 }
 
 function getApiEndpoint(streaming = false) {
-  // Custom endpoint always wins
-  if (state.endpoint) {
-    const base = state.endpoint.replace(/\/$/, '');
+  const activeEndpoint = getActiveEndpoint();
+  if (activeEndpoint) {
+    const base = activeEndpoint.replace(/\/$/, '');
     return base.endsWith('/chat/completions') ? base : `${base}/chat/completions`;
   }
   const provider = providerOf(state.model);
   if (provider === 'anthropic') return 'https://api.anthropic.com/v1/messages';
   if (provider === 'gemini') {
-    const key = state.geminiKey || state.apiKey;
+    const key = state.geminiKey || '';
     const method = streaming ? 'streamGenerateContent' : 'generateContent';
     const sseParam = streaming ? '&alt=sse' : '';
     return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:${method}?key=${key}${sseParam}`;
@@ -1040,23 +1152,24 @@ function getApiEndpoint(streaming = false) {
 function getApiHeaders() {
   const provider = providerOf(state.model);
   if (provider === 'anthropic') {
-    return {
+    const headers = {
       'Content-Type': 'application/json',
-      'x-api-key': state.anthropicKey || state.apiKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     };
+    if (state.anthropicKey) headers['x-api-key'] = state.anthropicKey;
+    return headers;
   }
   if (provider === 'gemini') {
     // API key is in URL for Gemini
     return { 'Content-Type': 'application/json' };
   }
-  // OpenAI / proxy / gateway — prefer proxy apiKey, fall back to direct openaiKey
-  const key = state.apiKey || state.openaiKey || '';
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${key}`,
-  };
+  const headers = { 'Content-Type': 'application/json' };
+  const key = getActiveEndpoint()
+    ? (state.connectionMode === 'proxy' ? state.apiKey : '')
+    : state.openaiKey;
+  if (key) headers['Authorization'] = `Bearer ${key}`;
+  return headers;
 }
 
 const MAX_TOKENS_CONCISE  = 1024;
@@ -1583,7 +1696,10 @@ dom.themeBtn.addEventListener('click', () => toggleTheme());
 dom.pinBtn.addEventListener('click', () => togglePin());
 
 // Dismiss buttons
-dom.contextDismiss.addEventListener('click', () => { dom.contextBanner.style.display = 'none'; });
+if (dom.contextAction) {
+  dom.contextAction.addEventListener('click', () => requestCurrentSiteAccess());
+}
+dom.contextDismiss.addEventListener('click', () => { hideContextBanner(); });
 dom.autoSummaryDismiss.addEventListener('click', () => { dom.autoSummaryCard.style.display = 'none'; });
 dom.errorDismiss.addEventListener('click', () => showError(null));
 dom.selectionPillDismiss.addEventListener('click', e => {
@@ -1976,12 +2092,10 @@ dom.setupSaveBtn.addEventListener('click', async () => {
     saveData.apiKey = ($('wizard-proxy-key') || {}).value?.trim() || '';
   } else if (wizard.mode === 'direct') {
     saveData.openaiKey = ($('wizard-openai-key') || {}).value?.trim() || '';
-    saveData.apiKey = saveData.openaiKey; // backward compat
     saveData.anthropicKey = ($('wizard-anthropic-key') || {}).value?.trim() || '';
     saveData.geminiKey = ($('wizard-gemini-key') || {}).value?.trim() || '';
   } else if (wizard.mode === 'local') {
     saveData.localEndpoint = ($('wizard-local-endpoint') || {}).value?.trim().replace(/\/+$/, '') || 'http://localhost:11434/v1';
-    saveData.endpoint = saveData.localEndpoint;
     saveData.localProvider = document.querySelector('#wizard-local .wizard-local-btn.active')?.dataset.provider || 'ollama';
   }
 
@@ -1994,6 +2108,7 @@ dom.setupSaveBtn.addEventListener('click', async () => {
   Object.assign(state, {
     connectionMode: saveData.connectionMode,
     apiKey: saveData.apiKey || '',
+    openaiKey: saveData.openaiKey || '',
     anthropicKey: saveData.anthropicKey || '',
     geminiKey: saveData.geminiKey || '',
     endpoint: saveData.endpoint || '',
