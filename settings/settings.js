@@ -430,6 +430,19 @@ function attachHttpsPrefill(el) {
       el.setSelectionRange(el.value.length, el.value.length);
     }
   });
+  // Clear prefilled "https://" if the user pastes a URL that already has a
+  // protocol, so the result isn't "https://https://..."
+  el.addEventListener("paste", (e) => {
+    const pasted = (e.clipboardData || window.clipboardData || {}).getData && (e.clipboardData || window.clipboardData).getData("text");
+    if (pasted && /^https?:\/\//i.test(pasted.trim()) && el.value === "https://") {
+      el.value = "";
+    }
+  });
+  // Defensive: collapse any accidental double-protocol (e.g. typed manually)
+  el.addEventListener("input", () => {
+    const collapsed = el.value.replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]);
+    if (collapsed !== el.value) el.value = collapsed;
+  });
   el.addEventListener("blur", () => {
     if (el.value.trim() === "https://") el.value = "";
   });
@@ -442,7 +455,10 @@ attachHttpsPrefill(dom.endpoint);
 // or custom URL, request the host permission at runtime from a user gesture.
 function originPatternOf(url) {
   try {
-    const parsed = new URL(url);
+    // Collapse duplicated protocol prefixes ("https://https://...") that can
+    // come from paste-on-prefill before handing the URL to the URL constructor.
+    const clean = String(url || "").replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]);
+    const parsed = new URL(clean);
     if (!/^https?:$/.test(parsed.protocol)) return null;
     return parsed.origin + "/*";
   } catch (_) {

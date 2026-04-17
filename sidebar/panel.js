@@ -1961,7 +1961,10 @@ if (wizardNext2) {
     try {
       let models = [];
       if (wizard.mode === 'proxy') {
-        const ep = ($('wizard-proxy-endpoint') || {}).value?.trim().replace(/\/+$/, '') || '';
+        // Normalize: strip trailing slashes AND collapse any accidentally-duplicated
+        // protocol prefix (paste with prefill can produce "https://https://...").
+        let ep = ($('wizard-proxy-endpoint') || {}).value?.trim() || '';
+        ep = ep.replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]).replace(/\/+$/, '');
         const key = ($('wizard-proxy-key') || {}).value?.trim() || '';
         if (!ep) throw new Error('Enter a proxy URL');
         // Request host permission for the custom proxy origin from this user gesture
@@ -2017,7 +2020,8 @@ if (wizardNext2) {
           } catch { /* skip */ }
         }
       } else if (wizard.mode === 'local') {
-        const ep = ($('wizard-local-endpoint') || {}).value?.trim().replace(/\/+$/, '') || 'http://localhost:11434/v1';
+        let ep = ($('wizard-local-endpoint') || {}).value?.trim() || 'http://localhost:11434/v1';
+        ep = ep.replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]).replace(/\/+$/, '');
         // Custom local endpoint (non-localhost) requires runtime permission
         if (!(await ensureOriginAccess(ep))) {
           throw new Error('Site access denied for ' + ep + ' — retry and allow the permission prompt');
@@ -2130,7 +2134,9 @@ dom.setupSaveBtn.addEventListener('click', async () => {
   };
 
   if (wizard.mode === 'proxy') {
-    saveData.endpoint = ($('wizard-proxy-endpoint') || {}).value?.trim().replace(/\/+$/, '') || '';
+    saveData.endpoint = (($('wizard-proxy-endpoint') || {}).value?.trim() || '')
+      .replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0])
+      .replace(/\/+$/, '');
     saveData.apiKey = ($('wizard-proxy-key') || {}).value?.trim() || '';
   } else if (wizard.mode === 'direct') {
     saveData.openaiKey = ($('wizard-openai-key') || {}).value?.trim() || '';
@@ -2173,7 +2179,10 @@ dom.setupSaveBtn.addEventListener('click', async () => {
 // runtime request from a user gesture (send click, wizard test click).
 function originPatternOf(url) {
   try {
-    const parsed = new URL(url);
+    // Collapse duplicated protocol prefixes ("https://https://...") that can
+    // come from paste-on-prefill before we hand the URL to the URL constructor.
+    const clean = String(url || '').replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]);
+    const parsed = new URL(clean);
     if (!/^https?:$/.test(parsed.protocol)) return null;
     return parsed.origin + '/*';
   } catch (_) {
@@ -2203,6 +2212,21 @@ function attachHttpsPrefill(el) {
       el.value = 'https://';
       el.setSelectionRange(el.value.length, el.value.length);
     }
+  });
+  // If the user pastes a URL that already starts with http:// or https://,
+  // clear the prefilled "https://" so we don't end up with "https://https://..."
+  el.addEventListener('paste', (e) => {
+    const cb = e.clipboardData || window.clipboardData;
+    const pasted = (cb && cb.getData && cb.getData('text')) || '';
+    if (/^https?:\/\//i.test(pasted.trim()) && el.value === 'https://') {
+      el.value = '';
+    }
+  });
+  // Defensive collapse: if a double-protocol sneaks in (manual typing, programmatic
+  // set, etc.), strip extra copies so only one https:// prefix survives.
+  el.addEventListener('input', () => {
+    const collapsed = el.value.replace(/^(https?:\/\/)+/i, (m) => m.match(/https?:\/\//i)[0]);
+    if (collapsed !== el.value) el.value = collapsed;
   });
   el.addEventListener('blur', () => {
     if (el.value.trim() === 'https://') el.value = '';

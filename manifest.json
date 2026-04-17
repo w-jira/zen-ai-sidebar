@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Zen AI Sidebar",
   "description": "Leo-style AI assistant sidebar powered by your own VPS API",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "author": "w-jira",
   "sidebar_action": {
     "default_panel": "sidebar/panel.html",
