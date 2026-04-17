@@ -484,13 +484,18 @@ const __permsCache = new Set();
     const all = await browser.permissions.getAll();
     (all.origins || []).forEach((o) => __permsCache.add(o));
   } catch (_) { /* best-effort */ }
-  // Keep cache in sync with out-of-band grants/revokes.
+  // Keep cache in sync with out-of-band grants/revokes. Guard against duplicate
+  // registration on page reload — permissions listeners persist within the addon
+  // process.
   try {
-    if (browser.permissions.onAdded) {
-      browser.permissions.onAdded.addListener((p) => (p.origins || []).forEach((o) => __permsCache.add(o)));
-    }
-    if (browser.permissions.onRemoved) {
-      browser.permissions.onRemoved.addListener((p) => (p.origins || []).forEach((o) => __permsCache.delete(o)));
+    if (!window.__permsListenersWired) {
+      window.__permsListenersWired = true;
+      if (browser.permissions.onAdded) {
+        browser.permissions.onAdded.addListener((p) => (p.origins || []).forEach((o) => __permsCache.add(o)));
+      }
+      if (browser.permissions.onRemoved) {
+        browser.permissions.onRemoved.addListener((p) => (p.origins || []).forEach((o) => __permsCache.delete(o)));
+      }
     }
   } catch (_) { /* best-effort */ }
 })();

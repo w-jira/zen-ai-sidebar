@@ -2577,12 +2577,19 @@ async function primePermsCache() {
   // about:addons while the sidebar is open). Without this, a revoke leaves a
   // stale `true` and fetch() later fails with a network error instead of the
   // cache miss triggering a re-request.
+  //
+  // Guard against duplicate registration: browser.permissions listeners persist
+  // across document reloads within the addon process. Re-running primePermsCache
+  // (sidebar close/reopen) would otherwise add a new listener each time.
   try {
-    if (browser.permissions.onAdded) {
-      browser.permissions.onAdded.addListener((p) => (p.origins || []).forEach((o) => __permsCache.add(o)));
-    }
-    if (browser.permissions.onRemoved) {
-      browser.permissions.onRemoved.addListener((p) => (p.origins || []).forEach((o) => __permsCache.delete(o)));
+    if (!window.__permsListenersWired) {
+      window.__permsListenersWired = true;
+      if (browser.permissions.onAdded) {
+        browser.permissions.onAdded.addListener((p) => (p.origins || []).forEach((o) => __permsCache.add(o)));
+      }
+      if (browser.permissions.onRemoved) {
+        browser.permissions.onRemoved.addListener((p) => (p.origins || []).forEach((o) => __permsCache.delete(o)));
+      }
     }
   } catch (_) { /* best-effort */ }
 }
