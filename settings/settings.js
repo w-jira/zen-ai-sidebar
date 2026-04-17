@@ -436,6 +436,32 @@ function attachHttpsPrefill(el) {
 }
 attachHttpsPrefill(dom.endpoint);
 
+/* ═══════════════════════════ HOST PERMISSION REQUEST ═══════════════ */
+// Manifest grants fetch for well-known API origins (OpenAI, Anthropic, Gemini,
+// OpenRouter, localhost). For any other origin the user configures as a proxy
+// or custom URL, request the host permission at runtime from a user gesture.
+function originPatternOf(url) {
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return null;
+    return parsed.origin + "/*";
+  } catch (_) {
+    return null;
+  }
+}
+
+async function ensureOriginAccess(url) {
+  const pattern = originPatternOf(url);
+  if (!pattern) return true;
+  try {
+    const has = await browser.permissions.contains({ origins: [pattern] });
+    if (has) return true;
+    return await browser.permissions.request({ origins: [pattern] });
+  } catch (_) {
+    return false;
+  }
+}
+
 /* ═══════════════════════════ TEST CONNECTION ═══════════════════════ */
 dom.btnTest.addEventListener("click", async () => {
   const endpoint = dom.endpoint.value.trim().replace(/\/+$/, "");
@@ -498,6 +524,16 @@ dom.btnTest.addEventListener("click", async () => {
         max_tokens: 10,
         stream: false,
       });
+    }
+
+    // Ensure host permission for the target origin before firing the request.
+    // Click handler counts as a user gesture so permissions.request() will work.
+    const granted = await ensureOriginAccess(url);
+    if (!granted) {
+      showStatus(dom.testResult, "\u2717 Site access denied \u2014 grant permission for " +
+        (originPatternOf(url) || "this origin") + " and retry", "err");
+      dom.btnTest.disabled = false;
+      return;
     }
 
     const res = await fetch(url, { method: "POST", headers, body });
@@ -926,11 +962,20 @@ async function runDiscovery() {
   const mode = stored.connectionMode || connectionMode;
 
   if (mode === "proxy") {
-    return discoverProxyModels(stored.endpoint || "", stored.apiKey || "");
+    const ep = stored.endpoint || "";
+    if (ep && !(await ensureOriginAccess(ep))) {
+      throw new Error("Host access denied for " + ep);
+    }
+    return discoverProxyModels(ep, stored.apiKey || "");
   } else if (mode === "direct") {
+    // Direct mode hits api.openai.com / api.anthropic.com / googleapis — pre-granted in manifest.
     return discoverDirectModels(stored.openaiKey || "", stored.anthropicKey || "", stored.geminiKey || "");
   } else if (mode === "local") {
-    return discoverLocalModels(stored.localEndpoint || "http://localhost:11434/v1");
+    const ep = stored.localEndpoint || "http://localhost:11434/v1";
+    if (!(await ensureOriginAccess(ep))) {
+      throw new Error("Host access denied for " + ep);
+    }
+    return discoverLocalModels(ep);
   }
   return [];
 }

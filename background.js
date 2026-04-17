@@ -104,7 +104,15 @@ browser.tabs.onActivated.addListener((activeInfo) => {
 });
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Full page load finished on the active tab
   if (changeInfo.status === "complete" && tab.active) {
     browser.runtime.sendMessage({ type: "TAB_CHANGED", url: tab.url || "" }).catch(() => {});
+    return;
+  }
+  // SPA navigation (pushState/replaceState) on the active tab — fires a URL change
+  // without a status transition. Treat it like a tab change so the sidebar
+  // re-requests fresh page content.
+  if (changeInfo.url && tab.active) {
+    browser.runtime.sendMessage({ type: "TAB_CHANGED", url: changeInfo.url }).catch(() => {});
   }
 });

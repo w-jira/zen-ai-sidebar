@@ -378,10 +378,23 @@ function triggerAutoSummary() {
       return;
     }
     try {
+      // Auto-summary fires without a user gesture, so we can't *request* host
+      // permission here — just check and bail cleanly if the target origin
+      // hasn't been granted yet. The user will hit the gesture path on their
+      // first Send or Test Connection, which prompts and unblocks this path.
+      const targetUrl = getApiEndpoint(false);
+      const pattern = originPatternOf(targetUrl);
+      if (pattern) {
+        const hasAccess = await browser.permissions.contains({ origins: [pattern] }).catch(() => false);
+        if (!hasAccess) {
+          dom.autoSummaryCard.style.display = 'none';
+          return;
+        }
+      }
       // Cancel any previous auto-summary in flight
       if (autoSummaryCtrl) autoSummaryCtrl.abort();
       autoSummaryCtrl = new AbortController();
-      const resp = await fetch(getApiEndpoint(false), {
+      const resp = await fetch(targetUrl, {
         method: 'POST',
         headers: getApiHeaders(),
         body: JSON.stringify(buildApiBody([
@@ -901,6 +914,27 @@ async function sendMessage(content) {
   // Check if model needs a custom endpoint
   if (!getActiveEndpoint() && needsCustomEndpoint(state.model)) {
     showError(`${modelLabel(state.model)} requires a custom endpoint (e.g. OpenRouter). Set one in Settings.`);
+    return;
+  }
+
+  // Pre-flight: ensure direct-mode requests have the matching provider key set.
+  if (state.connectionMode === 'direct') {
+    const provider = providerOf(state.model);
+    const missingKey = (provider === 'anthropic' && !state.anthropicKey) ||
+                       (provider === 'gemini' && !state.geminiKey) ||
+                       (provider === 'openai' && !state.openaiKey);
+    if (missingKey) {
+      showError(`Direct mode: enter a ${provider} API key in Settings before using ${modelLabel(state.model)}.`);
+      return;
+    }
+  }
+
+  // Ensure host permission for the target API origin — click is a user gesture
+  // so permissions.request() works here if needed.
+  const targetUrl = getApiEndpoint(false);
+  const granted = await ensureOriginAccess(targetUrl);
+  if (!granted) {
+    showError(`Site access denied for ${originPatternOf(targetUrl) || 'target origin'}. Grant permission and try again.`);
     return;
   }
 
@@ -1930,6 +1964,10 @@ if (wizardNext2) {
         const ep = ($('wizard-proxy-endpoint') || {}).value?.trim().replace(/\/+$/, '') || '';
         const key = ($('wizard-proxy-key') || {}).value?.trim() || '';
         if (!ep) throw new Error('Enter a proxy URL');
+        // Request host permission for the custom proxy origin from this user gesture
+        if (!(await ensureOriginAccess(ep))) {
+          throw new Error('Site access denied for ' + ep + ' — retry and allow the permission prompt');
+        }
         const headers = {};
         if (key) headers['Authorization'] = 'Bearer ' + key;
         for (const path of ['/v1/models', '/models']) {
@@ -1980,6 +2018,10 @@ if (wizardNext2) {
         }
       } else if (wizard.mode === 'local') {
         const ep = ($('wizard-local-endpoint') || {}).value?.trim().replace(/\/+$/, '') || 'http://localhost:11434/v1';
+        // Custom local endpoint (non-localhost) requires runtime permission
+        if (!(await ensureOriginAccess(ep))) {
+          throw new Error('Site access denied for ' + ep + ' — retry and allow the permission prompt');
+        }
         if (ep.includes('11434')) {
           try {
             const res = await fetch(ep.replace(/\/v1$/, '') + '/api/tags');
@@ -2124,6 +2166,32 @@ dom.setupSaveBtn.addEventListener('click', async () => {
   dom.setupOverlay.style.display = 'none';
   showToast('Connected \u2014 start chatting!', 2000);
 });
+
+/* ═══════════════════════════ HOST PERMISSION REQUEST ═══════════════ */
+// Manifest grants fetch for well-known API origins (OpenAI, Anthropic, Gemini,
+// OpenRouter, localhost). Any other origin (user's custom proxy) requires a
+// runtime request from a user gesture (send click, wizard test click).
+function originPatternOf(url) {
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return null;
+    return parsed.origin + '/*';
+  } catch (_) {
+    return null;
+  }
+}
+
+async function ensureOriginAccess(url) {
+  const pattern = originPatternOf(url);
+  if (!pattern) return true;
+  try {
+    const has = await browser.permissions.contains({ origins: [pattern] });
+    if (has) return true;
+    return await browser.permissions.request({ origins: [pattern] });
+  } catch (_) {
+    return false;
+  }
+}
 
 /* ═══════════════════════════ URL INPUT HELPERS ═════════════════════ */
 // Pre-fill https:// on focus for empty external URL inputs. Clears if still bare

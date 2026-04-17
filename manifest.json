@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Zen AI Sidebar",
   "description": "Leo-style AI assistant sidebar powered by your own VPS API",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "author": "w-jira",
   "sidebar_action": {
     "default_panel": "sidebar/panel.html",
@@ -36,11 +36,17 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "content_security_policy": "script-src 'self'; object-src 'none'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com",
+  "content_security_policy": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com",
   "permissions": [
     "activeTab",
     "storage",
-    "tabs"
+    "tabs",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://openrouter.ai/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "optional_permissions": [
     "http://*/*",
