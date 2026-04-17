@@ -2,7 +2,6 @@
 
 A privacy-first AI assistant sidebar for [Zen Browser](https://zen-browser.app) (and any Firefox-based browser). Bring your own API key — works with OpenAI, Anthropic, OpenRouter, Ollama, LiteLLM, or any OpenAI-compatible endpoint.
 
-
 ---
 
 ## Features
