@@ -558,8 +558,8 @@ dom.btnTest.addEventListener("click", async () => {
       });
     } else if (isGemini) {
       url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-            (model || "gemini-3.1-flash") + ":generateContent?key=" + effectiveKey;
-      headers = { "Content-Type": "application/json" };
+            (model || "gemini-3.1-flash") + ":generateContent";
+      headers = { "Content-Type": "application/json", "x-goog-api-key": effectiveKey };
       body = JSON.stringify({
         contents: [{ role: "user", parts: [{ text: "Reply with: OK" }] }],
         generationConfig: { maxOutputTokens: 10 },
@@ -660,10 +660,13 @@ if (dom.btnTestDirect) {
       if (geminiKey) {
         try {
           const res = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + geminiKey,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": geminiKey,
+              },
               body: JSON.stringify({
                 contents: [{ role: "user", parts: [{ text: "Reply with: OK" }] }],
                 generationConfig: { maxOutputTokens: 10 },
@@ -953,10 +956,12 @@ async function discoverDirectModels(openaiKey, anthropicKey, geminiKey) {
     } catch { /* skip */ }
   }
 
-  // Google: fetch models endpoint
+  // Google: fetch models endpoint (API key in header, not URL)
   if (geminiKey) {
     try {
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiKey);
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+        headers: { "x-goog-api-key": geminiKey },
+      });
       if (res.ok) {
         const data = await res.json();
         (data.models || []).forEach((m) => {

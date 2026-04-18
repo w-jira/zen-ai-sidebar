@@ -539,8 +539,13 @@ async function summarizePage(pageCtx, signal) {
       max_tokens: 300,
     };
   } else if (cfg.kind === 'gemini') {
-    targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${encodeURIComponent(cfg.key)}`;
-    headers = { 'Content-Type': 'application/json' };
+    // Gemini API key travels in x-goog-api-key header, not the URL.
+    // Previously used ?key=... which leaked into about:networking + browser history.
+    targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent`;
+    headers = {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': cfg.key,
+    };
     body = {
       contents: [{ role: 'user', parts: [{ text: userMsg }] }],
       systemInstruction: { parts: [{ text: sysMsg }] },
@@ -1526,10 +1531,11 @@ function getApiEndpoint(streaming = false) {
   const provider = providerOf(state.model);
   if (provider === 'anthropic') return 'https://api.anthropic.com/v1/messages';
   if (provider === 'gemini') {
-    const key = state.geminiKey || '';
+    // API key travels in x-goog-api-key header (see getApiHeaders). Only alt=sse
+    // stays as a query param since it's a content-negotiation hint, not a secret.
     const method = streaming ? 'streamGenerateContent' : 'generateContent';
-    const sseParam = streaming ? '&alt=sse' : '';
-    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:${method}?key=${key}${sseParam}`;
+    const suffix = streaming ? '?alt=sse' : '';
+    return `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:${method}${suffix}`;
   }
   return 'https://api.openai.com/v1/chat/completions';
 }
@@ -1546,8 +1552,11 @@ function getApiHeaders() {
     return headers;
   }
   if (provider === 'gemini') {
-    // API key is in URL for Gemini
-    return { 'Content-Type': 'application/json' };
+    // Gemini API key goes in header, not URL query — keeps it out of
+    // about:networking, browser history, and server access logs.
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.geminiKey) headers['x-goog-api-key'] = state.geminiKey;
+    return headers;
   }
   const headers = { 'Content-Type': 'application/json' };
   const key = getActiveEndpoint()
@@ -2384,7 +2393,9 @@ if (wizardNext2) {
         }
         if (gKey) {
           try {
-            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + gKey);
+            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+              headers: { 'x-goog-api-key': gKey },
+            });
             if (res.ok) {
               const data = await res.json();
               (data.models || []).forEach(m => {
